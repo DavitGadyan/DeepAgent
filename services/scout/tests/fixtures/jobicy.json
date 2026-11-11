@@ -1,0 +1,63 @@
+{
+ "apiVersion": "2.2.19",
+ "documentationUrl": "https://jobi.cy/apidocs",
+ "friendlyNotice": "Thanks for using Jobicy API! Please ensure Jobicy is clearly credited with a direct link to the source, and all application buttons redirect to the original job URL provided in this feed. That’s all! You might be building something amazing, we wish you the best of luck!",
+ "jobCount": 5,
+ "lastUpdate": "2026-11-11T10:52:36+00:00",
+ "nextCursor": "AgAAAABq9JA-AAAAAGr0OeIAAAAAAAJ12QLdYReLMIlnNcHnEovfWMhi-qEnddl3ku86rH8wP7EOL41g4JnWfuA0b7mUn57sNMotZmotF2ACdZflS8Ywc2Q",
+ "hasMore": true,
+ "appliedFilters": {
+  "count": 5,
+  "tag": "python"
+ },
+ "jobs": [
+  {
+   "id": 161252,
+   "url": "https://jobicy.com/jobs/161252-fraud-analytics-manager",
+   "jobSlug": "161252-fraud-analytics-manager",
+   "jobTitle": "Fraud Analytics Manager",
+   "companyName": "Imprint",
+   "companyLogo": "https://jobicy.com/data/server-nyc0409/galaxy/mercury/2024/02/a28c5741-221.jpeg",
+   "jobIndustry": [
+    "Data Science & Analytics"
+   ],
+   "jobType": [
+    "Full-Time"
+   ],
+   "jobGeo": "USA",
+   "jobLevel": "Any",
+   "jobExcerpt": "Who We Are Imprint helps the world's best brands grow the lifetime value of their customers. We started with co-branded credit cards and rebuilt them to be smarter, more rewarding, and brand-first. We partner with companies like Crate &amp; Barrel, Rakuten, Booking.com, H-E-B, Fetch, and Shell to launch modern credit programs that deepen loyalty, unlock&hellip;",
+   "jobDescription": "<h3><strong>Who We Are</strong></h3>\n<p><a href=\"https://jobicy.com/company/imprint\" target=\"_blank\" rel=\"noopener\">Imprint</a> helps the world's best brands grow the lifetime value of their customers. We started with co-branded credit cards and rebuilt them to be smarter, more rewarding, and brand-first. We partner with companies like Crate &amp; Barrel, Rakuten, ",
+   "pubDate": "2026-11-11T10:52:36+00:00",
+   "salaryMin": 120000,
+   "salaryMax": 150000,
+   "salaryCurrency": "USD",
+   "salaryPeriod": "yearly"
+  },
+  {
+   "id": 161250,
+   "url": "https://jobicy.com/jobs/161250-ai-security-engineer-detection-and-response",
+   "jobSlug": "161250-ai-security-engineer-detection-and-response",
+   "jobTitle": "AI Security Engineer, Detection and Response",
+   "companyName": "ŌURA",
+   "companyLogo": "https://jobicy.com/data/server-nyc0409/galaxy/mercury/2026/07/011c99434cd6-221.webp",
+   "jobIndustry": [
+    "Cybersecurity"
+   ],
+   "jobType": [
+    "Full-Time"
+   ],
+   "jobGeo": "USA",
+   "jobLevel": "Any",
+   "jobExcerpt": "Our mission at ŌURA is to empower every person to own their inner potential. Our award-winning products help our global community gain a deeper knowledge of their readiness, activity, and sleep quality by using their Oura Ring and its connected app. We've helped millions of people understand and improve their health by providing daily insights&hellip;",
+   "jobDescription": "<p>Our mission at <a href=\"https://jobicy.com/company/oura\" target=\"_blank\" rel=\"noopener\">ŌURA</a> is to empower every person to own their inner potential. Our award-winning products help our global community gain a deeper knowledge of their readiness, activity, and sleep quality by using their Oura Ring and its connected app. We've helped millions of people understand and improve their health",
+   "pubDate": "2026-11-11T10:52:33+00:00",
+   "salaryMin": 127500,
+   "salaryMax": 178000,
+   "salaryCurrency": "USD",
+   "salaryPeriod": "yearly"
+  }
+ ],
+ "statusCode": 200,
+ "success": true
+}

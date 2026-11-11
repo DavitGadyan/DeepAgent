@@ -1,0 +1,158 @@
+# LeadScout: one container per agent. Start with `make up` (see README).
+# The applier is not here on purpose: it runs on the host (`make applier`).
+
+x-service: &service
+  restart: unless-stopped
+  init: true # forwards SIGTERM, so `docker compose down` stops agents at once
+  env_file: .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway" # lets containers reach an Ollama on the host (Linux too)
+
+# Config files are mounted, not baked in: an edit takes effect at the next run.
+x-config: &config ./config:/app/config:ro
+
+x-agent-env: &agent-env
+  REDIS_URL: redis://redis:6379/0
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+services:
+  # --- Infrastructure ---------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leadscout
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadscout}
+      POSTGRES_DB: leadscout
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadscout"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379" # host-only, for the applier worker
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  ollama:
+    profiles: ["gpu"] # only on the GPU box: `docker compose --profile gpu up -d`
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "2" # one chat model + the embedding model
+      OLLAMA_KEEP_ALIVE: 30m
+    ports:
+      - "127.0.0.1:11434:11434" # this machine only; the agents use http://ollama:11434
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # --- Agents -------------------------------------------------------------------
+  scout:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: scout } }
+    environment:
+      <<: *agent-env
+      ENABLE_SCRAPED_SOURCES: ${ENABLE_SCRAPED_SOURCES:-false}
+    volumes: [*config]
+    depends_on: { redis: { condition: service_healthy } }
+
+  filter:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: filter } }
+    environment: *agent-env
+    volumes: [*config]
+    depends_on: { redis: { condition: service_healthy } }
+
+  extractor:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: extractor } }
+    environment: *agent-env
+    volumes: [*config]
+    depends_on: { redis: { condition: service_healthy } }
+
+  scorer:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: scorer } }
+    environment:
+      <<: *agent-env
+      PROFILE_CV_PATH: /polishmycv-docs/${PROFILE_CV_RELPATH:-cv/David_Gadyan_Resume.txt}
+      PROFILE_CATALOGUE_PATH: /polishmycv-docs/${PROFILE_CATALOGUE_RELPATH:-portfolio-catalogue.json}
+      PROFILE_PREFS_PATH: /profile/profile.yaml
+    volumes:
+      - *config
+      - ${POLISHMYCV_HOME:?set POLISHMYCV_HOME in .env}/docs:/polishmycv-docs:ro
+      # The folder, not the file: a missing file would be created as an empty directory.
+      - ./data/profile:/profile:ro
+    depends_on: { redis: { condition: service_healthy } }
+
+  researcher:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: researcher } }
+    environment:
+      <<: *agent-env
+      SEARXNG_URL: http://searxng:8080
+    volumes: [*config]
+    depends_on:
+      redis: { condition: service_healthy }
+      searxng: { condition: service_started }
+
+  # --- API and UI ---------------------------------------------------------------
+  orchestrator:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: orchestrator } }
+    command: ["uvicorn", "orchestrator_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *agent-env
+      DATABASE_URL: postgresql+asyncpg://leadscout:${POSTGRES_PASSWORD:-leadscout}@postgres:5432/leadscout
+      APPLICATIONS_DIR: /applications
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - *config
+      - ${POLISHMYCV_HOME:?set POLISHMYCV_HOME in .env}/output:/applications:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      retries: 6
+
+  web:
+    restart: unless-stopped
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: { orchestrator: { condition: service_healthy } }
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh repo sync:*)",
+      "Bash(gh release create:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block_push.py"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "concise@concise": true
+  }
+}

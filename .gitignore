@@ -1,0 +1,23 @@
+# Secrets and personal data
+.env
+data/profile/*
+!data/profile/profile.example.yaml
+*.db
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+web/out/
+web/test-results/
+
+# Tools
+.DS_Store
+.playwright-mcp/

@@ -1,0 +1,26 @@
+[
+ {
+  "id": "strong-fit-genai", "split": "train", "stratum": "fit",
+  "title": "Senior Generative AI Engineer", "company": "AgentWorks", "location": "Remote (Europe)",
+  "extracted": {"role_family": "Generative AI Engineer", "seniority": "senior", "remote_policy": "remote", "contract_type": "contract", "required_skills": ["Python", "LLM", "RAG", "LangChain", "AWS"], "years_experience": 5, "summary": "Build and ship LLM agents and RAG systems for clients."},
+  "min_score": 65
+ },
+ {
+  "id": "unrelated-embedded", "split": "train", "stratum": "mismatch",
+  "title": "Embedded Firmware Engineer", "company": "MotorCtl", "location": "Stuttgart, Germany",
+  "extracted": {"role_family": "Other", "seniority": "senior", "remote_policy": "onsite", "contract_type": "full_time", "required_skills": ["C", "RTOS", "CAN bus", "Oscilloscope debugging"], "years_experience": 7, "summary": "Write motor-control firmware for automotive ECUs."},
+  "max_score": 35
+ },
+ {
+  "id": "strong-fit-ds", "split": "holdout", "stratum": "fit",
+  "title": "Senior Data Scientist", "company": "InsureTech", "location": "Remote",
+  "extracted": {"role_family": "Data Scientist", "seniority": "senior", "remote_policy": "remote", "contract_type": "full_time", "required_skills": ["Python", "Machine Learning", "SQL", "NLP"], "years_experience": 5, "summary": "Build predictive models and NLP pipelines for underwriting."},
+  "min_score": 65
+ },
+ {
+  "id": "unrelated-sales", "split": "holdout", "stratum": "mismatch",
+  "title": "Enterprise Account Manager", "company": "CloudSeller", "location": "Chicago, IL",
+  "extracted": {"role_family": "Other", "seniority": "mid", "remote_policy": "onsite", "contract_type": "full_time", "required_skills": ["Salesforce", "Quota carrying", "Contract negotiation"], "years_experience": 4, "summary": "Own renewals and upsell for enterprise accounts."},
+  "max_score": 35
+ }
+]

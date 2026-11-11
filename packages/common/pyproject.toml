@@ -1,0 +1,22 @@
+[project]
+name = "leadscout-common"
+version = "0.1.0"
+description = "Shared contracts and plumbing for LeadScout services."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.9",
+  "redis>=5.2",
+  "httpx>=0.27",
+  "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+tracing = ["langfuse>=3"]
+llm = ["langchain-ollama>=0.3", "langchain-core>=0.3", "langfuse>=3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["leadscout_common"]

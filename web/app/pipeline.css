@@ -1,0 +1,313 @@
+/*
+ * The pipeline graph. Ported from the portfolio mind map (.mm*, .tg__panel):
+ * same card surface, kind colours, stage and side panel; the status ring,
+ * counters and event log are new.
+ *
+ * Not in a cascade layer: React Flow's base.css is unlayered, and layered rules
+ * would lose to it whatever their specificity.
+ */
+.mm [data-kind='source'] {
+  --mm-c: var(--kind-source);
+}
+.mm [data-kind='tool'] {
+  --mm-c: var(--kind-tool);
+}
+.mm [data-kind='llm'] {
+  --mm-c: var(--kind-llm);
+}
+.mm [data-kind='deep'] {
+  --mm-c: var(--kind-deep);
+}
+.mm [data-kind='human'] {
+  --mm-c: var(--kind-human);
+}
+.mm [data-kind='store'] {
+  --mm-c: var(--kind-store);
+}
+
+/* ---------- Stage ---------- */
+.mm__stage {
+  position: relative;
+  height: 100%;
+  min-height: 22rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  background: var(--stage-bg);
+}
+.mm .mm__stage .react-flow {
+  background: transparent;
+  --xy-edge-stroke-default: var(--edge);
+  --xy-edge-stroke-width-default: 1.5;
+  --xy-controls-button-background-color-default: var(--surface);
+  --xy-controls-button-background-color-hover-default: var(--raised);
+  --xy-controls-button-color-default: var(--fg);
+  --xy-controls-button-color-hover-default: var(--fg);
+  --xy-controls-button-border-color-default: var(--line-strong);
+  --xy-minimap-background-color-default: var(--panel);
+  --xy-attribution-background-color-default: transparent;
+}
+.mm__stage .react-flow__attribution {
+  color: var(--muted);
+}
+.mm__stage .react-flow__attribution a {
+  color: inherit;
+}
+.mm__stage .react-flow__controls {
+  box-shadow: none;
+  gap: 2px;
+}
+.mm__stage .react-flow__controls-button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line-strong);
+}
+.mm__stage .react-flow__minimap {
+  border: 1px solid var(--line-strong);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+@media (max-width: 64rem) {
+  .mm__stage .react-flow__minimap {
+    display: none;
+  }
+}
+.mm__stage .react-flow__node {
+  cursor: pointer;
+}
+.mm__stage .react-flow__node:focus-visible {
+  outline: none;
+}
+.mm__stage .react-flow__node:focus-visible .mm__card {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.mm__stage .react-flow__edge-path {
+  transition: stroke 0.3s;
+}
+.mm__stage .react-flow__edge.mm__edge--lit .react-flow__edge-path {
+  stroke: var(--mm-c, var(--accent));
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px var(--mm-c, var(--accent)));
+}
+
+/* ---------- Cards ---------- */
+.mm__card {
+  --mm-c: var(--kind-store);
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 0.35rem;
+  width: 184px;
+  min-height: 100px;
+  padding: 0.6rem 0.65rem 0.6rem 0.8rem;
+  border-radius: 0.8rem;
+  color: var(--fg);
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s,
+    opacity 0.25s;
+}
+.mm__card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6rem;
+  bottom: 0.6rem;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--mm-c);
+}
+.mm__card:hover {
+  border-color: var(--line-hover);
+}
+.mm__card[data-selected] {
+  border-color: var(--mm-c);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--mm-c) 50%, transparent),
+    0 0 28px -4px color-mix(in srgb, var(--mm-c) 55%, transparent);
+}
+.mm__card--source {
+  width: 208px;
+  min-height: 44px;
+  padding-block: 0.35rem;
+}
+.mm__card[data-disabled] {
+  opacity: 0.4;
+}
+
+/* Status: a pulsing ring while running, a tinted border otherwise. */
+.mm__card[data-status='running'] {
+  border-color: color-mix(in srgb, var(--mm-c) 70%, transparent);
+}
+.mm__card[data-status='running']::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 1rem;
+  border: 2px solid color-mix(in srgb, var(--mm-c) 70%, transparent);
+  animation: mmpulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.mm__card[data-status='waiting'] {
+  border-color: var(--warn);
+  box-shadow: 0 0 22px -6px var(--warn);
+}
+.mm__card[data-status='failed'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 22px -6px var(--danger);
+}
+
+.mm__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+  align-items: center;
+}
+.mm__icon {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--mm-c) 55%, transparent);
+  background: color-mix(in srgb, var(--mm-c) 18%, transparent);
+  color: var(--mm-c);
+}
+.mm__title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mm__short {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mm__card[data-status='running'] .mm__short,
+.mm__card[data-status='waiting'] .mm__short {
+  color: var(--body);
+}
+.mm__counts {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.mm__counts b {
+  margin-right: 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+.mm__counts [data-tone='warn'] b {
+  color: var(--warn);
+}
+.mm__counts [data-tone='bad'] b {
+  color: var(--danger);
+}
+.mm__badge {
+  min-width: 1.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--mm-c) 60%, transparent);
+  background: color-mix(in srgb, var(--mm-c) 22%, var(--surface));
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.mm__status {
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.mm__status[data-status='running'] {
+  color: var(--mm-c);
+}
+.mm__status[data-status='waiting'] {
+  color: var(--warn);
+}
+.mm__status[data-status='failed'] {
+  color: var(--danger);
+}
+.mm__status[data-status='done'] {
+  color: var(--accent);
+}
+.mm__status[data-status='idle'] {
+  color: var(--faint);
+}
+.mm__handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--surface);
+  background: var(--mm-c, var(--fg));
+}
+
+/* ---------- Legend ---------- */
+.mm__legend {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: var(--legend-bg);
+  font-size: 0.7rem;
+  color: var(--soft);
+}
+.mm__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.mm__legend i {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--mm-c);
+}
+
+@keyframes mmpulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm__card[data-status='running']::after {
+    animation: none;
+  }
+  .mm__stage .react-flow__edge.animated path {
+    animation: none;
+    stroke-dasharray: none;
+  }
+  .mm__card,
+  .mm__stage .react-flow__edge-path {
+    transition: none;
+  }
+}

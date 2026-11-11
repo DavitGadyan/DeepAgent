@@ -1,0 +1,129 @@
+/*
+ * Side panel of the pipeline graph: details and event log of the selected node.
+ * Ported from the portfolio's .tg__panel. Unlayered, like pipeline.css.
+ */
+
+/* Floats over the right edge of the stage so the graph keeps the full width. */
+.tg__panel {
+  position: absolute;
+  z-index: 6;
+  top: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  width: min(21rem, calc(100% - 1.5rem));
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--fg);
+  padding: 1.1rem 1.2rem 0;
+  box-shadow: -20px 0 40px -20px var(--shadow-color);
+}
+.tg__hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.tg__group {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--mm-c, var(--accent));
+}
+.tg__ptitle {
+  margin: 0.3rem 2.25rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.tg__psub {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.tg__dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem 0.6rem;
+  margin-top: 0.8rem;
+}
+.tg__dl dt {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.tg__dl dd {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--body);
+  font-variant-numeric: tabular-nums;
+}
+.tg__dl .tg__wide {
+  grid-column: 1 / -1;
+}
+.tg__dl .tg__wide dd {
+  font-size: 0.82rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.tg__close {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.tg__close:hover {
+  background: var(--hover-strong);
+}
+.tg__log {
+  flex: 1;
+  min-height: 0;
+  margin: 0.5rem -1.2rem 0;
+  padding: 0 1.2rem 1rem;
+  overflow-y: auto;
+}
+.tg__event {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.1rem 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.76rem;
+}
+.tg__event time,
+.tg__event .tg__dur {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tg__event .tg__subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg__event .tg__note {
+  grid-column: 2 / -1;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.tg__event[data-type$='failed'] .tg__note {
+  color: var(--danger);
+}
+.tg__event[data-type$='waiting'] .tg__note {
+  color: var(--warn);
+}

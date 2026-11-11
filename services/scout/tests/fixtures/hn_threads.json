@@ -1,0 +1,189 @@
+{
+ "exhaustive": {
+  "nbHits": true,
+  "typo": true
+ },
+ "exhaustiveNbHits": true,
+ "exhaustiveTypo": true,
+ "hits": [
+  {
+   "_highlightResult": {
+    "author": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "whoishiring"
+    },
+    "story_text": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Please state the location and include REMOTE for remote work, REMOTE (US)\nor similar if the country is restricted, and ONSITE when remote work is <i>not</i> an option.<p>Please only post if you personally are part of the hiring company—no\nrecruiting firms or job boards. One post per company. If it isn't a household name,\nexplain what your company does.<p>Please only post if you are actively"
+    },
+    "title": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Ask HN: Who is hiring? (November 2026)"
+    }
+   },
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_50338728",
+    "ask_hn"
+   ],
+   "author": "whoishiring",
+   "children": [
+    50454490,
+    50453290,
+    50452319
+   ],
+   "created_at": "2026-11-02T16:01:37Z",
+   "created_at_i": 1793635297,
+   "num_comments": 332,
+   "objectID": "50338728",
+   "points": 256,
+   "story_id": 50338728,
+   "story_text": "Please state the location and include REMOTE for remote work, REMOTE (US)\nor similar if the country is restricted, and ONSITE when remote work is <i>not</i> an option.<p>Please only post if you personally are part of the hiring company—no\nrecruiting firms or job boards. One post per company. If it isn&#x27;t a household name,\nexplain what your company does.<p>Please only post if you are actively",
+   "title": "Ask HN: Who is hiring? (November 2026)",
+   "updated_at": "2026-11-11T15:53:12Z"
+  },
+  {
+   "_highlightResult": {
+    "author": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "whoishiring"
+    },
+    "story_text": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Share your information if you are looking for work. Please use this format:<p><pre><code>  Location:\n  Remote:\n  Willing to relocate:\n  Technologies:\n  Résumé/CV:\n  Email:\n</code></pre>\nPlease only post if you are personally looking for work. Agencies, recruiters, job boards,\nand so on, are off topic here.<p>Readers: please only email these addresses to discuss work opportunities.<p>Searchers:"
+    },
+    "title": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Ask HN: Who wants to be hired? (November 2026)"
+    }
+   },
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_50338726",
+    "ask_hn"
+   ],
+   "author": "whoishiring",
+   "children": [
+    50454389,
+    50454222,
+    50454495
+   ],
+   "created_at": "2026-11-02T16:01:37Z",
+   "created_at_i": 1793635297,
+   "num_comments": 604,
+   "objectID": "50338726",
+   "points": 54,
+   "story_id": 50338726,
+   "story_text": "Share your information if you are looking for work. Please use this format:<p><pre><code>  Location:\n  Remote:\n  Willing to relocate:\n  Technologies:\n  Résumé&#x2F;CV:\n  Email:\n</code></pre>\nPlease only post if you are personally looking for work. Agencies, recruiters, job boards,\nand so on, are off topic here.<p>Readers: please only email these addresses to discuss work",
+   "title": "Ask HN: Who wants to be hired? (November 2026)",
+   "updated_at": "2026-11-11T15:54:12Z"
+  },
+  {
+   "_highlightResult": {
+    "author": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "whoishiring"
+    },
+    "story_text": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Please state the location and include REMOTE for remote work, REMOTE (US)\nor similar if the country is restricted, and ONSITE when remote work is <i>not</i> an option.<p>Please only post if you personally are part of the hiring company—no\nrecruiting firms or job boards. One post per company. If it isn't a household name,\nexplain what your company does.<p>Please only post if you are actively"
+    },
+    "title": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Ask HN: Who is hiring? (October 2026)"
+    }
+   },
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49922569",
+    "ask_hn"
+   ],
+   "author": "whoishiring",
+   "children": [
+    49926618,
+    49922584,
+    49925643
+   ],
+   "created_at": "2026-10-01T15:02:07Z",
+   "created_at_i": 1790866927,
+   "num_comments": 382,
+   "objectID": "49922569",
+   "points": 277,
+   "story_id": 49922569,
+   "story_text": "Please state the location and include REMOTE for remote work, REMOTE (US)\nor similar if the country is restricted, and ONSITE when remote work is <i>not</i> an option.<p>Please only post if you personally are part of the hiring company—no\nrecruiting firms or job boards. One post per company. If it isn&#x27;t a household name,\nexplain what your company does.<p>Please only post if you are actively",
+   "title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-11-11T06:42:25Z"
+  },
+  {
+   "_highlightResult": {
+    "author": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "whoishiring"
+    },
+    "story_text": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Share your information if you are looking for work. Please use this format:<p><pre><code>  Location:\n  Remote:\n  Willing to relocate:\n  Technologies:\n  Résumé/CV:\n  Email:\n</code></pre>\nPlease only post if you are personally looking for work. Agencies, recruiters, job boards,\nand so on, are off topic here.<p>Readers: please only email these addresses to discuss work opportunities.<p>Searchers:"
+    },
+    "title": {
+     "matchLevel": "none",
+     "matchedWords": [],
+     "value": "Ask HN: Who wants to be hired? (October 2026)"
+    }
+   },
+   "_tags": [
+    "story",
+    "author_whoishiring",
+    "story_49922568",
+    "ask_hn"
+   ],
+   "author": "whoishiring",
+   "children": [
+    49925150,
+    49926308,
+    49923956
+   ],
+   "created_at": "2026-10-01T15:02:07Z",
+   "created_at_i": 1790866927,
+   "num_comments": 682,
+   "objectID": "49922568",
+   "points": 136,
+   "story_id": 49922568,
+   "story_text": "Share your information if you are looking for work. Please use this format:<p><pre><code>  Location:\n  Remote:\n  Willing to relocate:\n  Technologies:\n  Résumé&#x2F;CV:\n  Email:\n</code></pre>\nPlease only post if you are personally looking for work. Agencies, recruiters, job boards,\nand so on, are off topic here.<p>Readers: please only email these addresses to discuss work",
+   "title": "Ask HN: Who wants to be hired? (October 2026)",
+   "updated_at": "2026-11-10T01:35:38Z"
+  }
+ ],
+ "hitsPerPage": 10,
+ "nbHits": 514,
+ "nbPages": 52,
+ "page": 0,
+ "params": "hitsPerPage=10&tags=story%2Cauthor_whoishiring&advancedSyntax=true&analyticsTags=backend",
+ "processingTimeMS": 1,
+ "processingTimingsMS": {
+  "_request": {
+   "roundTrip": 16
+  },
+  "afterFetch": {
+   "format": {
+    "total": 1
+   }
+  },
+  "total": 1
+ },
+ "query": "",
+ "serverTimeMS": 2
+}

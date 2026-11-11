@@ -1,0 +1,113 @@
+/*
+ * Every colour of the app, once per theme. Components and the other style
+ * sheets only refer to these variables; app/globals.css exposes the common
+ * ones to Tailwind (text-fg, bg-surface, border-line, ...).
+ *
+ * `data-theme` is set on <html> before first paint by lib/themeScript.ts.
+ * Text colours are chosen for WCAG AA (4.5:1) on --surface and --bg.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --raised: #e9ebef;
+  --inset: #ffffff;
+  --panel: #ffffff;
+  --paper: #ffffff;
+
+  /* Text */
+  --fg: #111214;
+  --body: #25272b;
+  --soft: #3f4247;
+  --muted: #5b5f66;
+  --faint: #6b7078;
+
+  /* Borders and overlays */
+  --line: rgba(17, 18, 20, 0.12);
+  --line-soft: rgba(17, 18, 20, 0.08);
+  --line-strong: rgba(17, 18, 20, 0.22);
+  --line-hover: rgba(17, 18, 20, 0.5);
+  --hover: rgba(17, 18, 20, 0.05);
+  --hover-strong: rgba(17, 18, 20, 0.1);
+  --backdrop: rgba(17, 18, 20, 0.45);
+  --shadow-color: rgba(17, 18, 20, 0.25);
+
+  /* Brand and states */
+  --accent: #15803d;
+  --accent-solid: #15803d;
+  --accent-solid-hover: #166534;
+  --accent-tint: rgba(21, 128, 61, 0.12);
+  --on-accent: #ffffff;
+  --focus: #1d4ed8;
+  --warn: #92500a;
+  --danger: #b91c1c;
+  --score-mid: #8a5a00;
+
+  /* Node kinds: darker than the dark-theme palette so they read on white */
+  --kind-source: #0369a1;
+  --kind-tool: #0f766e;
+  --kind-llm: #946200;
+  --kind-deep: #7e22ce;
+  --kind-human: #c2410c;
+  --kind-store: #56606b;
+
+  /* Pipeline graph */
+  --stage-bg: radial-gradient(ellipse at 50% 50%, #ffffff, #eceef2 75%);
+  --dot: rgba(17, 18, 20, 0.16);
+  --edge: rgba(17, 18, 20, 0.3);
+  --minimap-mask: rgba(17, 18, 20, 0.12);
+  --legend-bg: rgba(255, 255, 255, 0.9);
+  --card-bg: #ffffff;
+  --card-shadow: 0 1px 2px rgba(17, 18, 20, 0.08), 0 8px 20px -12px rgba(17, 18, 20, 0.3);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #141416;
+  --surface: #1c1d20;
+  --raised: #2a2b30;
+  --inset: #0f0f10;
+  --panel: #141416;
+
+  --fg: #ffffff;
+  --body: #e6e6e6;
+  --soft: #cfcfcf;
+  --muted: #a3a3a3;
+  --faint: #8a8a8a;
+
+  --line: rgba(255, 255, 255, 0.1);
+  --line-soft: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-hover: rgba(255, 255, 255, 0.45);
+  --hover: rgba(255, 255, 255, 0.06);
+  --hover-strong: rgba(255, 255, 255, 0.1);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --shadow-color: #000000;
+
+  /* --accent-solid, --on-accent and --paper are the same in both themes. */
+  --accent: #1faa55;
+  --accent-tint: rgba(31, 170, 85, 0.16);
+  --focus: #ffd600;
+  --warn: #ffb020;
+  --danger: #ff6b6b;
+  --score-mid: #ffd600;
+
+  --kind-source: #4cc3ff;
+  --kind-tool: #35d0ba;
+  --kind-llm: #ffd600;
+  --kind-deep: #c084fc;
+  --kind-human: #ff9f43;
+  --kind-store: #cfd3d8;
+
+  --stage-bg: radial-gradient(ellipse at 50% 50%, #26272a, #141416 70%);
+  --dot: rgba(255, 255, 255, 0.14);
+  --edge: rgba(255, 255, 255, 0.22);
+  --minimap-mask: rgba(0, 0, 0, 0.55);
+  --legend-bg: rgba(20, 20, 22, 0.85);
+  --card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), #1c1d20;
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 10px 30px -14px rgba(0, 0, 0, 0.9);
+}

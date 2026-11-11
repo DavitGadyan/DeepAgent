@@ -1,0 +1,98 @@
+[
+ {
+  "id": "remote-senior-eur",
+  "split": "train",
+  "stratum": "full-posting",
+  "title": "Senior Machine Learning Engineer",
+  "company": "Acme AI",
+  "location": "Remote (EU)",
+  "description": "We are hiring a Senior ML Engineer to build RAG pipelines and fine-tune LLMs. Requirements: 5+ years Python, PyTorch, LangChain, AWS, SQL. Nice to have: Kubernetes, Rust. Salary: €90k-€120k per year. Fully remote within Europe. Full-time.",
+  "expect": {
+   "seniority": "senior",
+   "remote_policy": "remote",
+   "salary_min": 90000,
+   "salary_max": 120000,
+   "salary_currency": "EUR",
+   "years_experience": 5
+  },
+  "required_skills_include": [
+   "Python",
+   "PyTorch"
+  ]
+ },
+ {
+  "id": "onsite-no-salary",
+  "split": "train",
+  "stratum": "sparse-posting",
+  "title": "Data Scientist",
+  "company": "Retail Co",
+  "location": "Madrid, Spain",
+  "description": "Join our analytics team in our Madrid office (5 days a week on site). You will build demand forecasting models with Python and scikit-learn and present results to the business. 2+ years of experience with SQL required.",
+  "expect": {
+   "remote_policy": "onsite",
+   "salary_min": null,
+   "salary_max": null
+  },
+  "required_skills_include": [
+   "Python",
+   "SQL"
+  ]
+ },
+ {
+  "id": "hybrid-lead-usd",
+  "split": "holdout",
+  "stratum": "full-posting",
+  "title": "Lead Generative AI Engineer",
+  "company": "FinServe",
+  "location": "New York, NY",
+  "description": "Lead a team shipping LLM agents for customer support. Hybrid: 3 days per week in our New York office. Must have: 8+ years software engineering, Python, LangGraph, vector databases, GCP. Bonus: TypeScript. Compensation: $210,000 - $260,000 base. This is a full-time role.",
+  "expect": {
+   "seniority": "lead",
+   "remote_policy": "hybrid",
+   "salary_min": 210000,
+   "salary_max": 260000,
+   "salary_currency": "USD",
+   "contract_type": "full_time"
+  },
+  "required_skills_include": [
+   "Python",
+   "LangGraph"
+  ]
+ },
+ {
+  "id": "contract-unknown-remote",
+  "split": "holdout",
+  "stratum": "sparse-posting",
+  "title": "Computer Vision Engineer (6-month contract)",
+  "company": "RoboParts",
+  "location": "",
+  "description": "Six month contract. Train and deploy object detection models (YOLO, OpenCV) for our inspection line. Day rate negotiable.",
+  "expect": {
+   "contract_type": "contract",
+   "remote_policy": "unknown",
+   "salary_min": null
+  },
+  "required_skills_include": [
+   "OpenCV"
+  ]
+ },
+ {
+  "id": "real-particle41-jobicy",
+  "split": "holdout",
+  "stratum": "full-posting",
+  "title": "AI Engineer",
+  "company": "Particle41",
+  "location": "USA",
+  "description": "AI Engineer \n\n Role Overview: \n\n As an AI Engineer at Particle41 you will design, develop and deploy machine-learning and deep-learning models/solutions (including generative-AI) that address complex business problems. You will collaborate with data scientists, data engineers, software engineers and client stakeholders. You will also build scalable pipelines, ensure production readiness, monitor performance and iterate proactively.\n\n In This Role, You Will: \n\n Lead end-to-end development of AI/ML models: from data ingestion & preprocessing to model training, evaluation, deployment and monitoring.\n\n Build generative-AI solutions (RAG, Agentic Workflows, MCP Servers, Conversation AI Agents) aligned with business goals.\n\n Work closely with data engineering teams to build/maintain data pipelines, feature stores and orchestration frameworks.\n\n Develop and integrate AI models into production systems (APIs, microservices, cloud deployments).\n\n Optimize models/solutions for performance, scalability, robustness and cost-efficiency.\n\n Monitor models/ solutions’ performance in production (drift, bias, fairness, reliability) and implement remediation.\n\n Document model design, experiments, data provenance and solution rationale.\n\n Stay abreast of latest AI/ML research, frameworks, tools (e.g. LangChain, LangGraph, MCP Clients/Servers, Agents SDKs, LiveKit etc.) and propose innovative ideas.\n\n Work directly with clients to understand problem statements, translate business requirements into AI solutions, and clearly communicate results.\n\n Skills and Experience We Value: \n\n Bachelor’s or Master’s degree in Computer Science, Engineering, Data Science, or related field.\n\n 3+ years of hands-on experience in AI/ML model development and deployment.\n\n Strong programming skills in Python and experience with major ML/AI frameworks (TensorFlow, PyTorch, scikit-learn, LangChain, LangGraph).\n\n Experience with vector databases (e.g., Pinecone, FAISS), RAG and Agentic workflows.\n\n Experience building or fine-tuning Large Language Models (LLMs).\n\n Experience deploying models into production: building REST APIs, microservices and monitoring.\n\n Familiarity with Text-to-Speech and Speech-to-Text models/solutions like Deepgram, ElevenLabs, Cartesia etc.\n\n Experience in computer vision, time-series modelling (ARIMA, Prophet) or multimodal AI.\n\n Familiarity with MLOps tools and frameworks (e.g., MLflow, Kubeflow, SageMaker).\n\n Strong understanding of algorithms, data structures, statistics, and machine-learning fundamentals (classification, regression, clustering, deep learning, sequence models).\n\n Ability to work in a fast-paced, dynamic environment and adapt to changing priorities.\n\n Publications, open-source contributions, or personal projects in the AI/ML domain\n\n About Particle41 \n\n Our core values of Empowering, Leadership, Innovation, Teamwork, and Excellence drive everything we do to achieve the ultimate outcomes for our clients. Empowering Leadership for Innovation in Teamwork with Excellence ( ELITE )\n\n E - Empowering: Enabling individuals to reach their full potential. L - Leadership: Taking initiative and guiding each other toward success. I - Innovation: Embracing creativity and new ideas to stay ahead. T - Teamwork: Collaborating with empathy to achieve common goals. E - Excellence: Striving for the highest quality in everything we do. \n\n We seek team members who embody these values and are committed to contributing to our mission. Particle41 welcomes individuals from all backgrounds who are committed to our mission and values. We provide equal employment opportunities to all employees and applicants, ensuring that hiring and employment decisions are based on merit and qualifications without discrimination based on race, color, religion, caste, age, sex, national origin, disability status, genetics, protected veteran status, sexual orientation, gender identity or expression, or any other characteristic protected by federal, state, local, or international laws. This policy applies to all aspects of employment and hiring. \n\n We appreciate your interest and encourage applicants from these regions to apply. If you need any assistance during the application or interview process, please feel free to reach out to us at careers@Particle41.com.",
+  "expect": {
+   "role_family": "AI Engineer",
+   "years_experience": 3,
+   "contract_type": "full_time"
+  },
+  "required_skills_include": [
+   "Python",
+   "PyTorch",
+   "LangChain"
+  ]
+ }
+]

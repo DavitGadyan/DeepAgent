@@ -1,0 +1,41 @@
+{
+  "name": "leadscout-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LeadScout web UI: live pipeline graph, leads, runs and setup.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "mock": "node mock/server.mjs"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.3",
+    "@xyflow/react": "^12.12.1",
+    "lucide-react": "^1.71.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.4.3",
+    "eslint-config-prettier": "^10.1.8",
+    "postcss": "^8.5.32",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,106 @@
+{
+ "jobs": [
+  {
+   "id": 10742268,
+   "title": "Lead Applied AI Engineer",
+   "url": "https://startup.jobs/lead-applied-ai-engineer-str-10742268?utm_source=mcp&utm_medium=mcp",
+   "published_at": "2026-11-10T15:17:14Z",
+   "employment_type": "full-time",
+   "workplace_type": "on-site",
+   "location": {
+    "city": "Arlington",
+    "state": "Virginia",
+    "country": "U.S.",
+    "country_code": "US"
+   },
+   "roles": [
+    {
+     "title": "Engineering",
+     "slug": "engineering"
+    },
+    {
+     "title": "AI Engineer",
+     "slug": "ai-engineer"
+    }
+   ],
+   "salary": "$180,000 – $230,000 per year",
+   "company": {
+    "name": "STR",
+    "slug": "str",
+    "url": "https://startup.jobs/company/str?utm_source=mcp&utm_medium=mcp",
+    "website_url": "https://str.us",
+    "logo_url": "https://startup.jobs/logos/29992",
+    "active_jobs_count": 158
+   }
+  },
+  {
+   "id": 10742269,
+   "title": "Lead Applied AI Engineer",
+   "url": "https://startup.jobs/lead-applied-ai-engineer-str-10742269?utm_source=mcp&utm_medium=mcp",
+   "published_at": "2026-11-10T15:16:29Z",
+   "employment_type": "full-time",
+   "workplace_type": "on-site",
+   "location": {
+    "city": "Woburn",
+    "state": "Massachusetts",
+    "country": "U.S.",
+    "country_code": "US"
+   },
+   "roles": [
+    {
+     "title": "Engineering",
+     "slug": "engineering"
+    },
+    {
+     "title": "AI Engineer",
+     "slug": "ai-engineer"
+    }
+   ],
+   "salary": "$180,000 – $230,000 per year",
+   "company": {
+    "name": "STR",
+    "slug": "str",
+    "url": "https://startup.jobs/company/str?utm_source=mcp&utm_medium=mcp",
+    "website_url": "https://str.us",
+    "logo_url": "https://startup.jobs/logos/29992",
+    "active_jobs_count": 158
+   }
+  },
+  {
+   "id": 10736654,
+   "title": "Applied AI Engineer",
+   "url": "https://startup.jobs/applied-ai-engineer-unframe-10736654?utm_source=mcp&utm_medium=mcp",
+   "published_at": "2026-11-10T15:02:42Z",
+   "employment_type": "full-time",
+   "workplace_type": "on-site",
+   "location": {
+    "city": "Tel Aviv-Yafo",
+    "state": "Tel Aviv District",
+    "country": "Israel",
+    "country_code": "IL"
+   },
+   "roles": [
+    {
+     "title": "AI Engineer",
+     "slug": "ai-engineer"
+    },
+    {
+     "title": "Engineering",
+     "slug": "engineering"
+    }
+   ],
+   "salary": null,
+   "company": {
+    "name": "Unframe",
+    "slug": "unframe",
+    "url": "https://startup.jobs/company/unframe?utm_source=mcp&utm_medium=mcp",
+    "website_url": null,
+    "logo_url": "https://startup.jobs/logos/42117",
+    "active_jobs_count": 34
+   }
+  }
+ ],
+ "total_count": 152,
+ "has_more": true,
+ "next_cursor": "10736654"
+}

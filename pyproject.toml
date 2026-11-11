@@ -1,0 +1,30 @@
+[project]
+name = "leadscout"
+version = "0.1.0"
+description = "Local-LLM job lead generation: one container per agent, live pipeline graph."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["packages/*", "services/*"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "fakeredis>=2.26", "ruff>=0.8", "mypy>=1.13"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages", "services", "tests"]
+addopts = "--import-mode=importlib -m 'not eval'"
+markers = ["eval: runs a real local model (slow); select with -m eval"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# A test page written as one HTML string: its lines are markup, not code.
+"services/applier/applier_service/selftest/site.py" = ["E501"]

@@ -1,0 +1,152 @@
+# Per-adapter settings. Top-level keys are adapter names (see docs/sources.md).
+# `enabled` decides which adapters a run uses by default. Scraped sources stay off and
+# additionally need ENABLE_SCRAPED_SOURCES=true.
+enabled:
+  greenhouse: true
+  lever: true
+  ashby: true
+  remoteok: true
+  remotive: true
+  weworkremotely: true
+  hn_hiring: true
+  yc_jobs: true
+  jobicy: true
+  startup_jobs: true
+  teamtailor: true
+  zoho_recruit: true
+  freelancermap: true
+  linkedin: false
+  indeed: false
+
+# Board slugs below were each verified with a live request on 2026-11-11.
+greenhouse:
+  companies:
+    - anthropic
+    - xai
+    - scaleai
+    - databricks
+    - togetherai
+    - coreweave
+    - figureai
+    - gleanwork
+    - snorkelai
+    - lightningai
+    - sambanovasystems
+    - arizeai
+    - assemblyai
+    - labelbox
+    - helsing
+    - waymo
+    - nuro
+    - dataiku
+    - stabilityai
+    - recursionpharmaceuticals
+
+lever:
+  companies:
+    - palantir
+    - zoox
+    - shieldai
+    - field-ai
+    - hive
+    - levelai
+    - pryon
+    - appen
+    - zilliz
+    - dexterity
+    - lumafield
+    - woven-by-toyota
+    - enveda
+    - metabase
+  # Lever does not return the company name; these override the title-cased slug.
+  names:
+    shieldai: Shield AI
+    field-ai: Field AI
+    levelai: Level AI
+    woven-by-toyota: Woven by Toyota
+
+ashby:
+  companies:
+    - openai
+    - cohere
+    - perplexity
+    - elevenlabs
+    - langchain
+    - cursor
+    - cognition
+    - harvey
+    - sierra
+    - decagon
+    - baseten
+    - modal
+    - fireworks
+    - lambda
+    - deepgram
+    - writer
+    - suno
+    - synthesia
+    - physicalintelligence
+    - wayve
+  # Ashby does not return the company name; these override the title-cased slug.
+  names:
+    openai: OpenAI
+    elevenlabs: ElevenLabs
+    langchain: LangChain
+    physicalintelligence: Physical Intelligence
+    fireworks: Fireworks AI
+
+remoteok:
+  # One feed per tag. Empty list = the main feed (latest 100 jobs of every kind).
+  tags: [ai, machine-learning, python]
+
+# No settings: the public feed is read whole in one request (it ignores search filters).
+# Terms: about four requests a day, so the adapter sends at most one per six hours and
+# reuses the last result in between (the guard is kept in Redis).
+remotive: {}
+
+weworkremotely:
+  feeds:
+    - https://weworkremotely.com/categories/remote-programming-jobs.rss
+    - https://weworkremotely.com/remote-jobs.rss
+
+hn_hiring: {}
+
+yc_jobs:
+  pages:
+    - /jobs
+    - /jobs/role/software-engineer
+    - /jobs/role/science
+
+jobicy:
+  # Optional filters: `industry` slug, `geo` slug, `tag` (text query, 3-50 chars).
+  # Terms: at most one sync per hour (the adapter enforces this; the guard is kept in Redis).
+  industry: data-science
+
+startup_jobs:
+  # One search per keyword. The server allows 20 HTTP requests a minute, handshake included.
+  max_queries: 4
+
+teamtailor:
+  sites:
+    - https://jobs.ethikos.es
+
+zoho_recruit:
+  sites:
+    - https://www.talent40.com/jobs
+  # The employer shown for each site; without an entry the hostname is used. The records'
+  # department is an internal team code on staffing sites, so it only becomes a tag.
+  names:
+    https://www.talent40.com/jobs: All European Careers
+
+freelancermap:
+  max_queries: 3
+  categories:
+    - python-programming-language
+
+linkedin:
+  location: Worldwide
+  max_queries: 3
+  delay_seconds: 3
+
+indeed:
+  location: Remote

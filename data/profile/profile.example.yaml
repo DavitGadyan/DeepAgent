@@ -1,0 +1,34 @@
+# Copy to profile.yaml (git-ignored) and fill in. Leave a value empty rather than guessing:
+# the scorer treats empty preferences as "no preference", and the job-applier agent leaves
+# any form question it cannot answer from this file blank for you.
+
+# Read by the scorer. Free text is fine.
+preferences:
+  locations: ""              # e.g. "Barcelona, or remote in EU/US time zones"
+  remote: ""                 # e.g. "remote or hybrid; no full-time onsite outside Barcelona"
+  contract_types: ""         # e.g. "full-time or contract"
+  minimum_salary: ""         # e.g. "EUR 90,000 per year"
+  seniority: ""              # e.g. "senior or lead"
+  avoid: ""                  # e.g. "defence, gambling"
+
+# Read only by the job-applier agent when it fills a form. Never sent to a local model.
+application:
+  full_name: ""
+  email: ""
+  phone: ""
+  city_and_country: ""
+  linkedin_url: ""
+  website_url: ""
+  github_url: ""
+  work_authorisation: ""     # e.g. "EU citizen; no sponsorship needed in the EU"
+  needs_visa_sponsorship: "" # yes / no, per region if it differs
+  salary_expectation: ""
+  notice_period: ""
+  willing_to_relocate: ""
+  years_of_experience: ""
+  how_did_you_hear: "Company careers page"
+  # Equal-opportunity questions: leave empty to have the agent choose "Prefer not to say".
+  gender: ""
+  ethnicity: ""
+  veteran_status: ""
+  disability_status: ""

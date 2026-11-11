@@ -1,0 +1,86 @@
+# First-start defaults for the Setup page. After that, settings live in the database.
+
+# A posting is kept when its title contains one of these phrases (whole words),
+# or is close enough to one of them by embedding similarity.
+keywords:
+  - AI Engineer
+  - Machine Learning Engineer
+  - ML Engineer
+  - Deep Learning Engineer
+  - Data Scientist
+  - Applied Scientist
+  - AI Solutions Engineer
+  - AI Solutions Architect
+  - Generative AI Engineer
+  - GenAI Engineer
+  - LLM Engineer
+  - Forward Deployed Engineer
+  - AI Architect
+  - MLOps Engineer
+  - NLP Engineer
+  - Computer Vision Engineer
+  - AI Research Engineer
+  # Topic words: a title that names the field is kept whatever the role is called.
+  - AI
+  - ML
+  - LLM
+  - LLMs
+  - RAG
+  - GenAI
+  - Generative AI
+  - Machine Learning
+  - Deep Learning
+  - Data Science
+  - NLP
+
+# A posting is dropped when its title contains one of these, whatever else it says.
+exclude_keywords:
+  - intern
+  - internship
+  - recruiter
+  - account executive
+  - sales development
+
+# Config-only (not on the Setup page). Titles that match no keyword are kept only when
+# they are closer, by embedding, to a keyword above than to any of these other jobs.
+other_roles:
+  - Backend Engineer
+  - Frontend Engineer
+  - DevOps Engineer
+  - Site Reliability Engineer
+  - Security Engineer
+  - Mobile Developer
+  - Full Stack Developer
+  - QA Engineer
+  - Data Analyst
+  - Business Analyst
+  - Product Manager
+  - Product Designer
+  - Sales Representative
+  - Marketing Manager
+  - Customer Success Manager
+  - Recruiter
+  - Accountant
+  - Office Administrator
+  - Technical Support Specialist
+  - Project Manager
+  - Java Developer
+  - Hardware Engineer
+
+# Config-only. Role points (out of 25) per role family the extractor assigns. A family
+# not listed gets 12. A job worth 0 here is capped at 49, however well the skills match.
+role_fit:
+  AI Engineer: 25
+  Machine Learning Engineer: 25
+  Deep Learning Engineer: 25
+  Data Scientist: 25
+  Generative AI Engineer: 25
+  AI Solutions Engineer: 25
+  Forward Deployed Engineer: 25
+  Research Scientist: 18
+  MLOps Engineer: 12
+  Data Engineer: 12
+  Other: 0
+
+research_min_score: 70   # leads scoring at least this get a company brief
+limit_per_source: 50     # postings taken from each source per run

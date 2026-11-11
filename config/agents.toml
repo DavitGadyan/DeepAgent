@@ -1,0 +1,33 @@
+# Per-agent model settings. Sized for one 16 GB GPU: one 14B chat model at Q4 (~9 GB)
+# plus the embedding model (~1.2 GB) and a 16k context fit with room for the KV cache.
+#
+# Environment overrides: <AGENT>_MODEL (e.g. SCORER_MODEL=deepseek-r1:14b),
+# LEADSCOUT_MODEL (every chat agent at once), LEADSCOUT_NUM_CTX, LEADSCOUT_TIMEOUT_S.
+
+[agents.filter]
+model = "bge-m3"            # embeddings only; no chat model
+embedding = true            # so LEADSCOUT_MODEL does not replace it with a chat model
+timeout_s = 60
+# A title with no keyword is kept when it is this close to a target role, and at least
+# min_margin closer to it than to any role in roles.yaml `other_roles`.
+min_similarity = 0.60
+min_margin = 0.0
+
+[agents.extractor]
+model = "qwen3:14b"
+num_ctx = 16384
+temperature = 0.0
+timeout_s = 300
+
+[agents.scorer]
+model = "qwen3:14b"         # deepseek-r1:14b also fits 16 GB; switching models costs a reload
+num_ctx = 16384
+temperature = 0.0
+timeout_s = 300
+
+[agents.researcher]
+model = "qwen3:14b"         # needs reliable tool calling
+num_ctx = 16384
+min_num_ctx = 8192          # its fixed prompt and one fetched page need this much
+temperature = 0.1
+timeout_s = 600             # whole research budget per company

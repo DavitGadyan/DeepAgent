@@ -1,0 +1,302 @@
+[
+ {
+  "title": "Member of Technical Staff, ML Infrastructure",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Research Scientist, LLMs",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Applied AI Lead",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Machine Learning Researcher",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Software Engineer, AI Platform",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Head of Data Science",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Staff Engineer - Agents",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Founding Engineer (LLM applications)",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Prompt Engineer",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Ingeniero de Inteligencia Artificial",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Solutions Architect, Generative AI",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Senior Software Engineer, Machine Learning",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Quantitative Researcher, Deep Learning",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Engineer, Model Evaluation",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "RAG Developer",
+  "keep": true,
+  "split": "train"
+ },
+ {
+  "title": "Senior Backend Engineer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Sales Manager",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Platform Engineer, Kubernetes",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Analytics Engineer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Technical Sales Engineer for industrial pumps",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Java/Angular Developer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Office Manager",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Frontend Engineer (React)",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Tax and Accounting Assessor",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Application Security Lead",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "iOS Developer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "ServiceNow Developer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Labour Relations Manager",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Senior Software Engineer, Payments",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Engineering Manager, Billing",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Technical Writer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Android Engineer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Network Engineer",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "SAP Consultant",
+  "keep": false,
+  "split": "train"
+ },
+ {
+  "title": "Research Engineer, Interpretability",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Applied Scientist II",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Senior Engineer, Recommendation Systems",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Inference Optimization Engineer",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Speech Recognition Scientist",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Engineer, Large Language Model Training",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Conversational AI Developer",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Científico de Datos",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Computer Vision Researcher",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Model Training Infrastructure Engineer",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Lead, Predictive Modelling",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Agentic Systems Engineer",
+  "keep": true,
+  "split": "holdout"
+ },
+ {
+  "title": "Senior Rust Engineer, Storage",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Account Manager",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Paralegal",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "React Native Developer",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Database Administrator",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Financial Controller",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "People Operations Partner",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Solutions Engineer, Payments API",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "UX Researcher",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Embedded Firmware Engineer",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Supply Chain Planner",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Site Reliability Engineer II",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Content Strategist",
+  "keep": false,
+  "split": "holdout"
+ },
+ {
+  "title": "Salesforce Administrator",
+  "keep": false,
+  "split": "holdout"
+ }
+]
