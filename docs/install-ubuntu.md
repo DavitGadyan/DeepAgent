@@ -103,19 +103,24 @@ the context is 32768 tokens. Six parallel requests added little delay in the tes
 
 ### 3. The embedding model
 
-The filter needs `BAAI/bge-m3`. It is not on this machine, and there is no Ollama. Run it
-on the CPU; the GPU has about 3.8 GB free and the desktop shares it.
+The filter needs `BAAI/bge-m3`. Run it on the CPU; the GPU has about 3.8 GB free and the
+desktop shares it. The image cannot download this model itself (its downloader fails with
+"relative URL without a base"), so the model is mounted from a folder. It is already in
+`/home/dyada/models/bge-m3` (2.2 GB: the configuration and tokenizer files and the two
+files in `onnx/`, downloaded with the `huggingface_hub` package), and this container
+already runs:
 
 ```bash
 BRIDGE=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
 docker run -d --name leadscout-embeddings --restart unless-stopped \
-  -p "$BRIDGE:8002:80" -v leadscout-embeddings:/data \
+  -p "$BRIDGE:8002:80" -v /home/dyada/models/bge-m3:/model:ro \
   ghcr.io/huggingface/text-embeddings-inference:cpu-1.5 \
-  --model-id BAAI/bge-m3 --max-client-batch-size 128
+  --model-id /model --max-client-batch-size 128
 ```
 
-The first start downloads the model. The container on port 8001 of this machine serves
-another model (`bge-small`); do not use it: the filter's thresholds were set with `bge-m3`.
+Measured on this machine: vectors of length 1024, 30 titles in about 0.3 s, 6.2 GB RAM.
+The container on port 8001 serves another model (`bge-small`); do not use it: the
+filter's thresholds were set with `bge-m3`.
 
 ### 4. `.env`
 
@@ -215,10 +220,15 @@ Tested on the Mac, with a copy of the real data in a separate test stack:
   514 checkpoints and the 293 queued jobs of the run in progress came back the same.
 - The import of prior applications: the status and the PDF files of a matching lead.
 
-Not tested, because it needs the Ubuntu machine:
+Tested on the Ubuntu machine by its Claude session (13 November 2026):
 
-- The forwarder and the embedding containers (the report shows that a container reaches a
-  port on the bridge address, and that a host-network container reaches vLLM).
+- The forwarder container: a container reads the model list of vLLM through it, and the
+  port does not answer on the network address.
+- The embedding container: the reply has the fields LeadScout reads, and the port does not
+  answer on the network address.
+
+Not tested yet:
+
 - vLLM and the GPU with LeadScout. The OpenAI-compatible path was tested against Ollama.
   On this vLLM, Qwen wrote a number without end in JSON output when the prompt did not
   describe the fields. LeadScout's prompts describe them. If an agent fails with a timeout
