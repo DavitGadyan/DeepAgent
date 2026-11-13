@@ -67,3 +67,72 @@ def test_a_shared_context_size_cannot_go_below_an_agents_floor(monkeypatch) -> N
 
     assert config.agent_config("scorer").num_ctx == 4096
     assert config.agent_config("researcher").num_ctx == 8192
+
+
+# --- Model servers: Ollama, or an OpenAI-compatible one such as vLLM ------------------
+
+SERVER_VARS = (
+    "LLM_PROVIDER",
+    "LLM_BASE_URL",
+    "LLM_API_KEY",
+    "EMBED_PROVIDER",
+    "EMBED_BASE_URL",
+    "EMBED_API_KEY",
+    "OLLAMA_BASE_URL",
+)
+
+
+@pytest.fixture
+def no_server_vars(monkeypatch):
+    for name in SERVER_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_ollama_stays_the_default_server(no_server_vars, monkeypatch) -> None:
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11434")
+
+    assert config.llm_server().model_dump() == {
+        "provider": "ollama",
+        "base_url": "http://gpu-box:11434",
+        "api_key": "",
+    }
+    assert config.embed_server() == config.llm_server()
+
+
+def test_vllm_is_an_openai_compatible_server(no_server_vars, monkeypatch) -> None:
+    from langchain_openai import ChatOpenAI
+    from leadscout_common.llm import chat_model
+
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_BASE_URL", "http://gpu-box:8001/v1/")
+    monkeypatch.setenv("EMBED_BASE_URL", "http://gpu-box:8002/v1")
+
+    model = chat_model(config.AgentConfig(model="Qwen/Qwen2.5-7B-Instruct", num_ctx=16384))
+
+    assert isinstance(model, ChatOpenAI)
+    assert (model.model_name, model.openai_api_base) == (
+        "Qwen/Qwen2.5-7B-Instruct",
+        "http://gpu-box:8001/v1",
+    )
+    assert model.profile["max_input_tokens"] == 16384
+    assert config.embed_server().base_url == "http://gpu-box:8002/v1"
+
+
+def test_embeddings_can_stay_on_ollama_while_chat_uses_vllm(no_server_vars, monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_API_KEY", "secret")
+    monkeypatch.setenv("EMBED_PROVIDER", "ollama")
+
+    server = config.embed_server()
+
+    assert (server.provider, server.base_url, server.api_key) == (
+        "ollama",
+        "http://localhost:11434",
+        "",  # the chat server's key is not sent to a different server
+    )
+
+
+def test_an_unknown_provider_is_refused(no_server_vars, monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "vllm")
+    with pytest.raises(ValueError, match="'ollama' or 'openai'"):
+        config.llm_server()

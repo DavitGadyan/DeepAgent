@@ -362,6 +362,7 @@ async def test_an_older_database_is_upgraded_in_place(tmp_path: Path) -> None:
             )
         )
         connection.execute(text("CREATE TABLE leads (job_id VARCHAR(16) PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO leads VALUES ('j1')"))
         connection.execute(
             text(
                 "INSERT INTO events VALUES (1, 'e1', '2026-11-11 10:00:00', 'r', 'filter',"
@@ -371,9 +372,11 @@ async def test_an_older_database_is_upgraded_in_place(tmp_path: Path) -> None:
         upgrade_schema(connection)
         ended = connection.execute(text("SELECT ends_job FROM events")).scalar()
         lead_columns = {c["name"] for c in inspect(connection).get_columns("leads")}
+        found = connection.execute(text("SELECT created_at FROM leads")).scalar()
 
     assert ended == 1
     assert "pipeline_error" in lead_columns
+    assert str(found).startswith("2026-11-11 10:00:00")  # found when its first event was stored
 
 
 async def test_a_database_outage_is_waited_out_not_skipped(monkeypatch) -> None:
@@ -410,3 +413,239 @@ async def test_a_database_outage_is_waited_out_not_skipped(monkeypatch) -> None:
 
 async def _no_sleep(seconds: float) -> None:
     return None
+
+
+async def test_profile_is_saved_to_the_file_and_read_back(
+    client: AsyncClient, tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / "profile" / "profile.yaml"
+    monkeypatch.setenv("PROFILE_PATH", str(path))
+    path.parent.mkdir()
+    path.write_text("application:\n  years_of_experience: 7\n  pronouns: they/them\n")
+
+    stored = (await client.get("/api/profile")).json()
+    assert stored["application"]["years_of_experience"] == "7"  # a YAML number becomes text
+    stored["preferences"]["remote"] = "remote only"
+    saved = await client.put("/api/profile", json=stored, headers=UI_ORIGIN)
+
+    assert saved.status_code == 200
+    text = path.read_text()
+    assert "remote: remote only" in text
+    assert "pronouns: they/them" in text  # a key added by hand is kept
+    assert (await client.get("/api/profile")).json()["preferences"]["remote"] == "remote only"
+
+
+async def test_profile_write_from_another_site_is_refused(
+    client: AsyncClient, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("PROFILE_PATH", str(tmp_path / "profile.yaml"))
+    answer = await client.put("/api/profile", json={}, headers={"Origin": "https://evil.example"})
+
+    assert answer.status_code == 403
+    assert not (tmp_path / "profile.yaml").exists()
+
+
+async def test_claude_access_and_budgets_are_settings(client: AsyncClient, bus: Bus) -> None:
+    settings = (await client.get("/api/settings")).json()
+    assert settings["claude_access"] == "login"
+    settings.update(claude_access="console", fill_budget_usd=2.5)
+
+    assert (await client.put("/api/settings", json=settings, headers=UI_ORIGIN)).status_code == 200
+    mirrored = await load_settings(bus)
+    assert (mirrored.claude_access, mirrored.fill_budget_usd) == ("console", 2.5)
+    settings["claude_access"] = "both"
+    assert (await client.put("/api/settings", json=settings, headers=UI_ORIGIN)).status_code == 422
+
+
+async def test_applier_status_is_null_until_the_worker_reports(
+    client: AsyncClient, bus: Bus
+) -> None:
+    from leadscout_common.schemas import ApplierStatus
+    from leadscout_common.shared_state import save_applier_status
+
+    assert (await client.get("/api/applier")).json() is None
+    await save_applier_status(bus, ApplierStatus(logged_in=True, auth_method="claude.ai"))
+
+    assert (await client.get("/api/applier")).json()["logged_in"] is True
+
+
+# --- Workers, graphs and progress ----------------------------------------------------
+
+
+async def test_workers_chosen_at_start_stay_for_the_agents(client: AsyncClient, bus: Bus) -> None:
+    run = (await client.post("/api/runs", json={"workers": 3}, headers=UI_ORIGIN)).json()
+
+    assert run["options"]["workers"] == 3
+    assert (await load_settings(bus)).workers == 3
+    nodes = {node["id"]: node for node in (await client.get("/api/pipeline")).json()["nodes"]}
+    assert (nodes["extractor"]["workers"], nodes["applier"]["workers"]) == (3, 1)
+
+    later = (await client.post("/api/runs", json={}, headers=UI_ORIGIN)).json()
+    assert later["options"]["workers"] == 3  # not given: the count stays
+
+
+async def test_pipeline_shows_each_agents_graph_or_steps(client: AsyncClient, bus: Bus) -> None:
+    from leadscout_common.schemas import GraphEdge, GraphNode, GraphShape
+    from leadscout_common.shared_state import save_graph
+
+    shape = GraphShape(
+        nodes=[GraphNode(id="facts", label="facts"), GraphNode(id="tidy", label="tidy")],
+        edges=[GraphEdge(source="facts", target="tidy")],
+    )
+    await save_graph(bus, "extractor", shape)
+
+    nodes = {node["id"]: node for node in (await client.get("/api/pipeline")).json()["nodes"]}
+
+    assert nodes["extractor"]["graph"]["edges"] == [
+        {"source": "facts", "target": "tidy", "conditional": False}
+    ]
+    assert nodes["scorer"]["graph"] is None  # that agent has not started yet
+    assert nodes["filter"]["steps"] == ["Title keywords", "Title embedding", "Posting text"]
+
+
+async def test_progress_inside_an_agent_changes_no_statistics(client: AsyncClient) -> None:
+    run_id = (await client.post("/api/runs", headers=UI_ORIGIN)).json()["id"]
+    await record(client, item(run_id, Agent.SCOUT), filtered(run_id=run_id))
+    before = (await client.get(f"/api/runs/{run_id}")).json()["stats"]
+
+    step = item(run_id, Agent.EXTRACTOR, EventType.ITEM_PROGRESS, node="facts", worker=2)
+    await record(client, step)
+
+    assert (await client.get(f"/api/runs/{run_id}")).json()["stats"] == before
+    stored = (await client.get(f"/api/runs/{run_id}/events")).json()
+    assert stored[-1]["data"] == {"node": "facts", "worker": 2}  # kept for the replay
+
+
+# --- Leads: found date, sort, live push ---------------------------------------------
+
+
+async def test_leads_are_newest_first_and_filter_on_the_found_date(client: AsyncClient) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    old_job = JOB.model_copy(update={"title": "Old ML Engineer"})
+    old = filtered(old_job)
+    old.ts = now - timedelta(days=5)
+    await record(client, old, item("", Agent.SCORER, posting=old_job, score=SCORE))
+    await record(client, filtered())  # found now, not scored yet
+
+    newest = (await client.get("/api/leads")).json()["items"]
+    assert [lead["title"] for lead in newest] == ["AI Engineer", "Old ML Engineer"]
+    by_score = (await client.get("/api/leads", params={"sort": "score"})).json()["items"]
+    assert [lead["title"] for lead in by_score] == ["Old ML Engineer", "AI Engineer"]
+
+    day_ago = (now - timedelta(days=1)).isoformat()
+    recent = (await client.get("/api/leads", params={"found_after": day_ago})).json()
+    assert [lead["title"] for lead in recent["items"]] == ["AI Engineer"]
+    older = (await client.get("/api/leads", params={"found_before": day_ago})).json()
+    assert [lead["title"] for lead in older["items"]] == ["Old ML Engineer"]
+
+
+async def test_a_changed_lead_is_pushed_to_open_pages(client: AsyncClient) -> None:
+    from orchestrator_service import event_log
+
+    app = client.app  # type: ignore[attr-defined]
+    queue = app.state.broadcaster.subscribe()
+    await record(client, filtered())
+
+    started = item("", Agent.EXTRACTOR, EventType.ITEM_STARTED)
+    scored = item("", Agent.SCORER, score=SCORE)
+    assert not event_log.may_change_lead(started)  # nothing on the lead changed
+    await record(client, scored)
+    await event_log.push_lead(app.state.sessions, app.state.broadcaster, JOB.job_id)
+
+    pushed = queue.get_nowait()
+    assert isinstance(pushed, event_log.LeadChanged)
+    assert (pushed.lead["score"], pushed.lead["status"]) == (82, "scored")
+
+    await client.patch(f"/api/leads/{JOB.job_id}", json={"status": "skipped"}, headers=UI_ORIGIN)
+    assert queue.get_nowait().lead["status"] == "skipped"  # your own changes are pushed too
+
+
+# --- Costs ----------------------------------------------------------------------------
+
+
+def session_event(usd: float, **data: object) -> Event:
+    return item("", Agent.APPLIER, action="tailor", cost_usd=usd, forwarded=False, **data)
+
+
+async def test_costs_are_split_by_who_pays_and_include_failed_sessions(
+    client: AsyncClient,
+) -> None:
+    failed = item("", Agent.APPLIER, EventType.ITEM_FAILED, action="fill_form", cost_usd=0.5)
+    await record(
+        client,
+        filtered(),
+        session_event(3.0),  # before the switch existed: Claude login
+        session_event(2.0, access="console", model="opus"),
+        failed,
+        item("", Agent.APPLIER, EventType.ITEM_STARTED, action="tailor"),  # no cost: not counted
+    )
+
+    report = (await client.get("/api/costs", params={"days": 7})).json()
+
+    assert report["all_time"] == {"usd": 5.5, "billed_usd": 2.0, "sessions": 3}
+    assert report["today"]["usd"] == 5.5
+    assert len(report["by_day"]) == 7
+    assert report["by_day"][-1] == {
+        "date": report["by_day"][-1]["date"],
+        "login_usd": 3.5,
+        "console_usd": 2.0,
+    }
+    assert [(row["key"], row["usd"]) for row in report["by_action"]] == [
+        ("tailor", 5.0),
+        ("fill_form", 0.5),
+    ]
+    assert {row["key"] for row in report["by_model"]} == {"default", "opus"}
+    assert report["top_leads"] == [{"job_id": JOB.job_id, "title": "", "usd": 5.5, "sessions": 3}]
+    assert report["links"]["console_billing"].startswith("https://console.anthropic.com")
+    lead = (await client.get(f"/api/leads/{JOB.job_id}")).json()
+    assert lead["application"]["cost_usd"] == 5.5  # the failed session is on the lead too
+
+
+async def test_a_used_up_monthly_budget_stops_new_sessions(client: AsyncClient) -> None:
+    await record(client, filtered(), session_event(4.0))
+    settings = (await client.get("/api/settings")).json()
+    settings["monthly_budget_usd"] = 4
+    await client.put("/api/settings", json=settings, headers=UI_ORIGIN)
+
+    refused = await client.post(f"/api/leads/{JOB.job_id}/tailor", headers=UI_ORIGIN)
+    assert refused.status_code == 409
+    assert "monthly budget" in refused.json()["detail"]
+
+    settings["monthly_budget_usd"] = 10
+    await client.put("/api/settings", json=settings, headers=UI_ORIGIN)
+    assert (
+        await client.post(f"/api/leads/{JOB.job_id}/tailor", headers=UI_ORIGIN)
+    ).status_code == 202
+
+
+# --- Stopping a run ---------------------------------------------------------------------
+
+
+async def test_a_stopped_run_is_marked_and_the_agents_are_told(
+    client: AsyncClient, bus: Bus
+) -> None:
+    from leadscout_common.shared_state import run_stopped
+
+    run_id = (await client.post("/api/runs", headers=UI_ORIGIN)).json()["id"]
+    await record(client, item(run_id, Agent.SCOUT), filtered(run_id=run_id))
+
+    stopped = await client.post(f"/api/runs/{run_id}/stop", headers=UI_ORIGIN)
+
+    assert stopped.status_code == 200
+    assert stopped.json()["status"] == "stopped"
+    assert stopped.json()["finished_at"] is not None
+    assert await run_stopped(bus, run_id)
+    assert not await run_stopped(bus, "another-run")
+
+    # An agent lets go of the job that was waiting: the counts settle, the run stays stopped.
+    let_go = item(run_id, Agent.EXTRACTOR, EventType.ITEM_DROPPED, reason="The run was stopped")
+    await record(client, let_go, Event(run_id=run_id, agent=Agent.SCOUT, type=EventType.SCOUT_DONE))
+    after = (await client.get(f"/api/runs/{run_id}")).json()
+    assert (after["status"], after["stats"]["in_flight"]) == ("stopped", 0)
+
+    again = await client.post(f"/api/runs/{run_id}/stop", headers=UI_ORIGIN)
+    # Nothing changes (SQLite hands the time back without its zone, hence the prefix).
+    assert again.json()["finished_at"][:26] == stopped.json()["finished_at"][:26]
+    assert (await client.post("/api/runs/nope/stop", headers=UI_ORIGIN)).status_code == 404

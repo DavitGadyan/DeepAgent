@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { failureNote, formatLimitPerSource, formatSalary, formatUsd } from './format';
+import {
+  failureNote,
+  formatAgo,
+  formatDate,
+  formatLimitPerSource,
+  formatSalary,
+  formatUsd,
+} from './format';
 
 describe('formatSalary', () => {
   it('formats a range in thousands with the currency', () => {
@@ -37,6 +44,35 @@ describe('formatUsd', () => {
   it('rounds to cents', () => {
     expect(formatUsd(1.249)).toBe('$1.25');
     expect(formatUsd(0)).toBe('$0.00');
+  });
+
+  it('does not show a real amount below half a cent as zero', () => {
+    expect(formatUsd(0.0031)).toBe('<$0.01');
+    expect(formatUsd(0.005)).toBe('$0.01');
+  });
+});
+
+describe('formatAgo', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const ago = (ms: number) => formatAgo(new Date(now - ms).toISOString(), now);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+
+  it('says "just now" under a minute, and for a time ahead of this clock', () => {
+    expect(ago(20_000)).toBe('just now');
+    expect(ago(-5000)).toBe('just now');
+  });
+
+  it('counts whole minutes, hours and days', () => {
+    expect(ago(5 * MINUTE + 59_000)).toBe('5 min ago');
+    expect(ago(3 * HOUR + 40 * MINUTE)).toBe('3 h ago');
+    expect(ago(23 * HOUR + 59 * MINUTE)).toBe('23 h ago');
+    expect(ago(2 * 24 * HOUR + HOUR)).toBe('2 d ago');
+  });
+
+  it('gives the date after 30 days', () => {
+    const iso = new Date(now - 45 * 24 * HOUR).toISOString();
+    expect(formatAgo(iso, now)).toBe(formatDate(iso));
   });
 });
 

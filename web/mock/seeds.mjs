@@ -56,6 +56,46 @@ export const AGENTS = [
   ],
 ];
 
+const graphNode = (id) => ({
+  id,
+  label: { __start__: 'Start', __end__: 'End' }[id] ?? id.replaceAll('_', ' '),
+});
+const graphEdge = (source, target, conditional = false) => ({ source, target, conditional });
+/** A graph whose nodes run one after the other, start to end. */
+function chain(...steps) {
+  const ids = ['__start__', ...steps, '__end__'];
+  return {
+    nodes: ids.map(graphNode),
+    edges: ids.slice(1).map((id, index) => graphEdge(ids[index], id)),
+  };
+}
+
+/** agent id -> its LangGraph graph, shaped like the agents publish it. */
+export const GRAPHS = {
+  extractor: chain('facts', 'highlights', 'tidy'),
+  scorer: chain('judge', 'rubric'),
+  // The deep agent: the model calls tools in a loop until it has the brief.
+  researcher: {
+    nodes: ['__start__', 'model', 'tools', '__end__'].map(graphNode),
+    edges: [
+      graphEdge('__start__', 'model'),
+      graphEdge('model', 'tools', true),
+      graphEdge('tools', 'model'),
+      graphEdge('model', '__end__', true),
+    ],
+  },
+};
+
+/** agent id -> what an agent that is not a graph does, in order. */
+export const STEPS = {
+  scout: ['Fetch every enabled source', 'Rank postings', 'Forward the new ones'],
+  filter: ['Title keywords', 'Title embedding', 'Posting text'],
+  applier: ['Tailor CV (polishmycv)', 'Fill the form', 'Stop before Submit'],
+};
+
+/** The agents that run a pool of workers; the scout and the applier are always one. */
+export const POOLED = ['filter', 'extractor', 'scorer', 'researcher'];
+
 /** [title, company, location, source, remote policy, seniority, score] */
 export const LEAD_SEEDS = [
   ['Senior AI Engineer', 'Lumen Health', 'Remote (EU)', 'jobicy', 'remote', 'senior', 93],

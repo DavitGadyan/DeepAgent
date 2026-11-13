@@ -1,0 +1,144 @@
+/*
+ * Cost page: the budget meter and the daily spend chart. Unlayered, like
+ * pipeline.css. Colours come from theme.css; the two series are told apart by
+ * fill as well as hue (Claude login is hatched), so the chart also reads in
+ * grey and for colour-blind viewers.
+ */
+
+/* ---------- Budget meter: the fill says how close the month is to the budget ---------- */
+.meter--budget {
+  --tone: var(--accent);
+  height: 0.5rem;
+  margin-top: 0;
+  background: color-mix(in srgb, var(--tone) 18%, transparent);
+}
+.meter--budget i {
+  min-width: 2px;
+  background: var(--tone);
+}
+.meter--budget[data-level='near'] {
+  --tone: var(--warn);
+}
+.meter--budget[data-level='over'] {
+  --tone: var(--danger);
+}
+
+/* ---------- Series keys (legend, tooltip, bars) ---------- */
+.series {
+  background-color: var(--series-1);
+}
+.series[data-series='login'] {
+  background-color: var(--series-2);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 3px,
+    color-mix(in srgb, var(--surface) 60%, transparent) 3px 5px
+  );
+}
+.series-key {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+
+/* ---------- Daily spend chart ---------- */
+.spend {
+  --plot-h: 12rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  /* Room for the last day's label, which is centred under a narrow bar. */
+  padding: 0.5rem 1rem 0 0;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.spend__axis {
+  position: relative;
+  height: var(--plot-h);
+}
+.spend__axis span {
+  position: absolute;
+  right: 0.5rem;
+  transform: translateY(50%);
+  white-space: nowrap;
+}
+.spend__plot {
+  position: relative;
+  height: var(--plot-h);
+  border-radius: 0.25rem;
+}
+.spend__grid {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--line-soft);
+}
+.spend__grid[data-baseline] {
+  background: var(--line-strong);
+}
+.spend__days {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+/* The whole slot, top to bottom, is the hover target: nobody has to hit a thin bar. */
+.spend__day {
+  display: flex;
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+}
+.spend__day[data-active] {
+  background: var(--hover);
+}
+.spend__bar {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  /* Never wider than 24px; the 2px of surface keeps neighbouring days apart. */
+  width: min(calc(100% - 2px), 1.5rem);
+  height: 100%;
+}
+.spend__seg {
+  flex: none;
+  min-height: 2px;
+}
+/* The data end is rounded, the baseline end square. */
+.spend__seg:last-child {
+  border-radius: 4px 4px 0 0;
+}
+.spend__dates {
+  display: flex;
+  grid-column: 2;
+  height: 1.5rem;
+}
+.spend__dates span {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.spend__dates i {
+  position: absolute;
+  top: 0.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.spend__tip {
+  position: absolute;
+  z-index: 5;
+  top: 0.25rem;
+  min-width: 13.5rem;
+  pointer-events: none;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 0.55rem 0.7rem;
+  color: var(--body);
+  font-size: 0.76rem;
+  box-shadow: 0 12px 28px -14px var(--shadow-color);
+}

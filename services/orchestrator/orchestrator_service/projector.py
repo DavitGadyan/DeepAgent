@@ -51,6 +51,8 @@ async def update_run(session: AsyncSession, run: RunRow, event: Event) -> bool:
     """Refresh the run's statistics after `event` was stored. True when it completed the run."""
     if event.type == EventType.SCOUT_DONE:
         run.scout_done = True
+    elif event.type == EventType.ITEM_PROGRESS:
+        return False  # a step inside an agent: no job started or ended
     elif not event.job_id or event.agent not in PIPELINE_AGENTS:
         return False
     else:
@@ -103,7 +105,12 @@ def creates_lead(event: Event) -> bool:
 
 
 def new_lead(event: Event) -> LeadRow:
-    lead = LeadRow(job_id=event.job_id, status=LeadStatus.NEW.value, remote_policy="unknown")
+    lead = LeadRow(
+        job_id=event.job_id,
+        status=LeadStatus.NEW.value,
+        remote_policy="unknown",
+        created_at=event.ts,
+    )
     _copy_posting(lead, event)
     return lead
 
@@ -150,13 +157,13 @@ def _apply_applier_event(lead: LeadRow, event: Event) -> None:
     }
     data = event.data
     is_fill = data.get("action") == "fill_form"
+    # Claude Code's own figure for the session, at API prices, summed per lead. A session
+    # that failed or stopped for the user was paid for as well.
+    if data.get("cost_usd"):
+        application["cost_usd"] = round((application.get("cost_usd") or 0) + data["cost_usd"], 4)
     if event.type == EventType.ITEM_FINISHED:
         application.update(
             error="", dir=data.get("application_dir", ""), files=data.get("files", [])
-        )
-        # Claude Code's own figure for the session, at API prices, summed per lead.
-        application["cost_usd"] = round(
-            (application.get("cost_usd") or 0) + (data.get("cost_usd") or 0), 4
         )
         if is_fill:
             application["unanswered"] = data.get("unanswered", [])

@@ -135,14 +135,19 @@ async def test_an_empty_brief_is_filled_from_what_the_tools_found(
     from langchain_core.messages import ToolMessage
 
     class Agent:
-        async def ainvoke(self, request: Any, config: Any) -> dict:
+        checkpointer = None
+
+        async def astream(self, request: Any, config: Any, stream_mode: Any) -> Any:
             page = ToolMessage(
                 content="Acme builds AI agents for insurers.", name="fetch_page", tool_call_id="1"
             )
-            return {
-                "messages": [page, AIMessage(content="done")],
-                "structured_response": CompanyBrief(sources=["https://acme.test"]),
-            }
+            yield (
+                "values",
+                {
+                    "messages": [page, AIMessage(content="done")],
+                    "structured_response": CompanyBrief(sources=["https://acme.test"]),
+                },
+            )
 
     seen = {}
 
@@ -157,3 +162,22 @@ async def test_an_empty_brief_is_filled_from_what_the_tools_found(
     assert "Acme builds AI agents for insurers." in seen["user"]
     assert brief.what_they_do == "AI agents for insurers."
     assert brief.sources == ["https://acme.test"]
+
+
+def test_the_drawn_graph_is_the_model_and_tools_loop_without_plumbing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from leadscout_common.checkpoints import graph_shape
+
+    monkeypatch.setattr(researcher, "chat_model", lambda config: ScriptedModel(messages=iter([])))
+    shape = graph_shape(researcher.build_agent(AgentConfig(model="qwen3:14b")))
+
+    assert [node.id for node in shape.nodes] == ["__start__", "model", "tools", "__end__"]
+    edges = {(edge.source, edge.target) for edge in shape.edges}
+    assert edges == {
+        ("__start__", "model"),
+        ("model", "tools"),
+        ("tools", "model"),
+        ("model", "__end__"),
+        ("tools", "__end__"),
+    }

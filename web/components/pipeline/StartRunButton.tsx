@@ -2,13 +2,27 @@
 import { ChevronDown, Play } from 'lucide-react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { type ApiError, api, toApiError } from '@/lib/api';
-import type { Run } from '@/lib/types';
+import { MAX_WORKERS, type Run } from '@/lib/types';
 import { InlineError } from '@/components/ui/States';
 
-/** "Start run" with a small popover for the two options a run takes. */
-export function StartRunButton({ onStarted }: { onStarted: (run: Run) => void }) {
+/** The whole number in `text` when it is a valid worker count; null otherwise. */
+function parseWorkers(text: string): number | null {
+  const count = Number(text);
+  return Number.isInteger(count) && count >= 1 && count <= MAX_WORKERS ? count : null;
+}
+
+/** "Start run" with a small popover for the options a run takes. */
+export function StartRunButton({
+  workers,
+  onStarted,
+}: {
+  /** How many parallel workers the agents have now. */
+  workers: number;
+  onStarted: (run: Run) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState('');
+  const [workersText, setWorkersText] = useState(String(workers));
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -34,9 +48,13 @@ export function StartRunButton({ onStarted }: { onStarted: (run: Run) => void })
     setError(null);
     try {
       // An empty limit is left out so the orchestrator applies the one from Setup.
+      // The worker count is sent only when it was changed: sending it sets it
+      // for every agent, which would overwrite the per-agent numbers from Setup.
+      const count = parseWorkers(workersText);
       const run = await api.startRun({
         force,
         ...(limit ? { limit_per_source: Number(limit) } : {}),
+        ...(count !== null && count !== workers ? { workers: count } : {}),
       });
       setOpen(false);
       onStarted(run);
@@ -54,7 +72,11 @@ export function StartRunButton({ onStarted }: { onStarted: (run: Run) => void })
         className="btn btn--primary"
         aria-expanded={open}
         aria-haspopup="dialog"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          // Each time it opens, the popover starts from the count in use now.
+          if (!open) setWorkersText(String(workers));
+          setOpen(!open);
+        }}
       >
         <Play size={14} aria-hidden="true" />
         Start run
@@ -73,6 +95,23 @@ export function StartRunButton({ onStarted }: { onStarted: (run: Run) => void })
               value={limit}
               onChange={(change) => setLimit(change.target.value)}
             />
+          </label>
+          <label className="grid gap-1">
+            <span className="label">Workers</span>
+            <input
+              type="number"
+              className="field"
+              min={1}
+              max={MAX_WORKERS}
+              step={1}
+              required
+              value={workersText}
+              aria-describedby="workers-hint"
+              onChange={(change) => setWorkersText(change.target.value)}
+            />
+            <span id="workers-hint" className="text-[0.74rem] leading-snug text-muted">
+              Jobs each agent handles at the same time.
+            </span>
           </label>
           <label className="flex items-start gap-2 text-[0.8rem] leading-snug">
             <input

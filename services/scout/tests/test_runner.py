@@ -204,3 +204,35 @@ async def test_a_source_that_gives_up_is_not_retried(bus, use_sources) -> None:
     assert source.calls == 1
     failed = (await source_events(bus, EventType.SOURCE_FAILED))["search"]
     assert failed["error"] == "Fake: no search query succeeded: ReadTimeout"
+
+
+# --- Rows and stopping ---------------------------------------------------------------
+
+
+async def raw_lanes(bus: Bus) -> list[int]:
+    entries = await bus.redis.xrange(Stream.RAW.value)
+    return [JobMessage.model_validate_json(fields["json"]).lane for _, fields in entries]
+
+
+async def test_postings_are_dealt_to_the_rows_in_turn(bus, use_sources) -> None:
+    from leadscout_common.schemas import RunOptions
+
+    use_sources(FakeSource("board", [posting(title) for title in "ABCDE"]))
+
+    await execute_run(bus, RunCommand(run_id="r1", options=RunOptions(workers=2)))
+
+    assert await raw_lanes(bus) == [1, 2, 1, 2, 1]  # every row gets the same share
+
+
+async def test_a_stopped_run_forwards_nothing_more(bus, use_sources) -> None:
+    from leadscout_common.shared_state import stop_run
+
+    source = FakeSource("board", [posting("A"), posting("B")])
+    use_sources(source)
+    await stop_run(bus, "r1")
+
+    await execute_run(bus, run(limit=5))
+
+    assert source.calls == 0  # not even fetched
+    assert await raw_titles(bus) == []
+    assert (await events(bus))[-1].type == EventType.SCOUT_DONE  # the run can still end

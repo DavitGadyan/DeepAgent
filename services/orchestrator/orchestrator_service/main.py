@@ -15,7 +15,7 @@ from leadscout_common.logs import setup_logging
 
 from .db import create_tables, make_engine, make_session_factory
 from .event_log import Broadcaster, supervise_consumer
-from .routes import events, leads, runs
+from .routes import costs, events, leads, prior_applications, profile, runs
 from .security import SameOriginWritesMiddleware
 
 
@@ -58,6 +58,9 @@ def create_app() -> FastAPI:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     app.include_router(runs.router)
     app.include_router(leads.router)
+    app.include_router(prior_applications.router)
+    app.include_router(profile.router)
+    app.include_router(costs.router)
     app.include_router(events.router)
     return app
 

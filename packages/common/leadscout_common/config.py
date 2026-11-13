@@ -24,6 +24,57 @@ def ollama_base_url() -> str:
     return os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
+class ModelServer(BaseModel):
+    """Where a model is served and which protocol it speaks.
+
+    provider "ollama": Ollama's own API. provider "openai": any OpenAI-compatible server,
+    which is how vLLM serves models (base_url ends in /v1).
+    """
+
+    provider: str
+    base_url: str
+    api_key: str = ""
+
+
+def llm_server() -> ModelServer:
+    """The chat model server: `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`.
+
+    The default is Ollama at `OLLAMA_BASE_URL`, so an existing `.env` keeps working.
+    """
+    provider = os.environ.get("LLM_PROVIDER", "ollama").strip().lower() or "ollama"
+    if provider not in ("ollama", "openai"):
+        raise ValueError(f"LLM_PROVIDER must be 'ollama' or 'openai', not {provider!r}")
+    default_url = ollama_base_url() if provider == "ollama" else "http://localhost:8001/v1"
+    return ModelServer(
+        provider=provider,
+        base_url=(os.environ.get("LLM_BASE_URL") or default_url).rstrip("/"),
+        api_key=os.environ.get("LLM_API_KEY", ""),
+    )
+
+
+def embed_server() -> ModelServer:
+    """The embedding server: `EMBED_PROVIDER`, `EMBED_BASE_URL`, `EMBED_API_KEY`.
+
+    Each value falls back to the chat server's. vLLM serves one model per process, so
+    embeddings usually get their own address (or stay on Ollama).
+    """
+    chat = llm_server()
+    provider = os.environ.get("EMBED_PROVIDER", "").strip().lower() or chat.provider
+    if provider not in ("ollama", "openai"):
+        raise ValueError(f"EMBED_PROVIDER must be 'ollama' or 'openai', not {provider!r}")
+    same = provider == chat.provider
+    fallback = (
+        chat.base_url
+        if same
+        else (ollama_base_url() if provider == "ollama" else "http://localhost:8002/v1")
+    )
+    return ModelServer(
+        provider=provider,
+        base_url=(os.environ.get("EMBED_BASE_URL") or fallback).rstrip("/"),
+        api_key=os.environ.get("EMBED_API_KEY") or (chat.api_key if same else ""),
+    )
+
+
 class AgentConfig(BaseModel):
     """Per-agent model settings from `config/agents.toml`."""
 

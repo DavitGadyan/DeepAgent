@@ -11,9 +11,20 @@ x-service: &service
 # Config files are mounted, not baked in: an edit takes effect at the next run.
 x-config: &config ./config:/app/config:ro
 
+# Model server settings (LLM_PROVIDER, LLM_BASE_URL, ...) come from .env through env_file.
 x-agent-env: &agent-env
   REDIS_URL: redis://redis:6379/0
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+# Agents that are LangGraph graphs keep their checkpoints in the same Postgres, in
+# LangGraph's own tables (a POSTGRES_PASSWORD with special characters must be URL-encoded).
+x-graph-env: &graph-env
+  <<: *agent-env
+  CHECKPOINT_DB_URL: postgresql://leadscout:${POSTGRES_PASSWORD:-leadscout}@postgres:5432/leadscout
+
+x-graph-needs: &graph-needs
+  redis: { condition: service_healthy }
+  postgres: { condition: service_healthy }
 
 services:
   # --- Infrastructure ---------------------------------------------------------
@@ -36,7 +47,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:6379:6379" # host-only, for the applier worker
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379" # host-only, for the applier worker
     volumes:
       - redis-data:/data
     healthcheck:
@@ -89,15 +100,15 @@ services:
   extractor:
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: extractor } }
-    environment: *agent-env
+    environment: *graph-env
     volumes: [*config]
-    depends_on: { redis: { condition: service_healthy } }
+    depends_on: *graph-needs
 
   scorer:
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: scorer } }
     environment:
-      <<: *agent-env
+      <<: *graph-env
       PROFILE_CV_PATH: /polishmycv-docs/${PROFILE_CV_RELPATH:-cv/David_Gadyan_Resume.txt}
       PROFILE_CATALOGUE_PATH: /polishmycv-docs/${PROFILE_CATALOGUE_RELPATH:-portfolio-catalogue.json}
       PROFILE_PREFS_PATH: /profile/profile.yaml
@@ -106,17 +117,17 @@ services:
       - ${POLISHMYCV_HOME:?set POLISHMYCV_HOME in .env}/docs:/polishmycv-docs:ro
       # The folder, not the file: a missing file would be created as an empty directory.
       - ./data/profile:/profile:ro
-    depends_on: { redis: { condition: service_healthy } }
+    depends_on: *graph-needs
 
   researcher:
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: researcher } }
     environment:
-      <<: *agent-env
+      <<: *graph-env
       SEARXNG_URL: http://searxng:8080
     volumes: [*config]
     depends_on:
-      redis: { condition: service_healthy }
+      <<: *graph-needs
       searxng: { condition: service_started }
 
   # --- API and UI ---------------------------------------------------------------
@@ -129,11 +140,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://leadscout:${POSTGRES_PASSWORD:-leadscout}@postgres:5432/leadscout
       APPLICATIONS_DIR: /applications
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      PROFILE_PATH: /profile/profile.yaml
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
     volumes:
       - *config
       - ${POLISHMYCV_HOME:?set POLISHMYCV_HOME in .env}/output:/applications:ro
+      # Writable: the Setup page saves your profile here (the folder, for an atomic replace).
+      - ./data/profile:/profile
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -149,7 +163,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
     depends_on: { orchestrator: { condition: service_healthy } }
 
 volumes:

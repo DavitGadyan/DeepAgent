@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -135,11 +135,17 @@ class CompanyBrief(BaseModel):
 # --- Bus messages --------------------------------------------------------------
 
 
+MAX_WORKERS = 16
+
+
 class RunOptions(BaseModel):
     sources: list[str] = Field(default_factory=list, description="Empty means every enabled source")
     limit_per_source: int = Field(default=0, description="0 means the value from Settings")
     force: bool = Field(
         default=False, description="Re-process postings already seen in earlier runs"
+    )
+    workers: int = Field(
+        default=0, ge=0, le=MAX_WORKERS, description="Parallel workers per agent; 0 keeps Settings"
     )
 
 
@@ -159,6 +165,10 @@ class JobMessage(BaseModel):
     extracted: ExtractedJob | None = None
     score: FitScore | None = None
     brief: CompanyBrief | None = None
+    # The row of the pipeline the job travels in, 1..N. The scout deals the jobs of a run
+    # to the rows in turn, and every agent handles a job with its worker of that number, so
+    # a job never changes rows. 0: not dealt yet (a message from an older version).
+    lane: int = 0
 
     @property
     def job_id(self) -> str:
@@ -194,6 +204,7 @@ class EventType(StrEnum):
     ITEM_DROPPED = "item.dropped"
     ITEM_FAILED = "item.failed"
     ITEM_WAITING = "item.waiting"  # an agent is blocked on the human
+    ITEM_PROGRESS = "item.progress"  # a node of the agent's LangGraph graph started
 
 
 class Event(BaseModel):
@@ -205,6 +216,9 @@ class Event(BaseModel):
       item.dropped    -> reason: str
       item.failed     -> error: str
       item.waiting    -> reason: str (the applier needs the human)
+      item.progress   -> node: str (the graph node that started), resumed: bool (it
+                         continued from a checkpoint)
+      every item.*    -> worker: int (which of the agent's parallel workers, from 1)
       source.finished -> source: str, count: int, new: int, skipped: int
       source.failed   -> source: str, error: str
     docs/api.md lists every key.
@@ -226,6 +240,11 @@ class Event(BaseModel):
 # --- Shared settings -----------------------------------------------------------------
 
 
+# "login": your Claude account (claude.ai subscription), as signed in with `claude auth login`.
+# "console": an Anthropic Console API key, `ANTHROPIC_API_KEY` in `.env`, billed per token.
+ClaudeAccess = Literal["login", "console"]
+
+
 class Settings(BaseModel):
     """User-editable settings. The orchestrator owns them and mirrors them to Redis for agents."""
 
@@ -234,6 +253,114 @@ class Settings(BaseModel):
     exclude_keywords: list[str] = Field(default_factory=list)
     research_min_score: int = 70
     limit_per_source: int = 50
+    claude_access: ClaudeAccess = Field(
+        default="login", description="How the applier's Claude Code sessions sign in"
+    )
+    # Caps on what one Claude Code session may spend (`--max-budget-usd`); 0 means no cap.
+    tailor_budget_usd: float = Field(default=10, ge=0, le=200)
+    fill_budget_usd: float = Field(default=5, ge=0, le=200)
+    monthly_budget_usd: float = Field(
+        default=0, ge=0, le=100_000, description="Claude spend allowed per month; 0 = no limit"
+    )
+    workers: int = Field(
+        default=1,
+        ge=1,
+        le=MAX_WORKERS,
+        description="Rows of the pipeline: each is one worker of every agent",
+    )
+    # Model for Tailor CV: "" = Claude Code's default, an alias ("opus", "sonnet", "haiku",
+    # "fable") or a full model name. It becomes one `--model` argument, so the pattern
+    # also keeps it from looking like an option.
+    tailor_model: str = Field(default="", max_length=64, pattern=r"^([a-z][a-z0-9.-]*(\[1m\])?)?$")
+
+
+class ApplierStatus(BaseModel):
+    """What the applier worker reports about itself (Redis, refreshed while it runs)."""
+
+    api_key_set: bool = False
+    logged_in: bool = False
+    auth_method: str = ""
+    subscription: str = ""
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+# --- Your profile (data/profile/profile.yaml) --------------------------------------
+
+
+class _ProfileSection(BaseModel):
+    """Free-text answers. Empty means "not stated": nothing is guessed from it.
+
+    Unknown keys a user added by hand are kept, so saving from the UI does not drop them.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def as_text(cls, value: Any) -> str:
+        # YAML reads `years_of_experience: 7` as a number, and `yes` as a boolean.
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        return str(value).strip()
+
+
+class Preferences(_ProfileSection):
+    """Read by the scorer (logistics and seniority)."""
+
+    locations: str = Field(default="", max_length=500)
+    remote: str = Field(default="", max_length=500)
+    contract_types: str = Field(default="", max_length=500)
+    minimum_salary: str = Field(default="", max_length=500)
+    seniority: str = Field(default="", max_length=500)
+    avoid: str = Field(default="", max_length=500)
+
+
+class Application(_ProfileSection):
+    """Read only by the job-applier agent, to fill forms. Never sent to a local model."""
+
+    full_name: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=100)
+    city_and_country: str = Field(default="", max_length=200)
+    linkedin_url: str = Field(default="", max_length=500)
+    website_url: str = Field(default="", max_length=500)
+    github_url: str = Field(default="", max_length=500)
+    work_authorisation: str = Field(default="", max_length=500)
+    needs_visa_sponsorship: str = Field(default="", max_length=500)
+    salary_expectation: str = Field(default="", max_length=200)
+    notice_period: str = Field(default="", max_length=200)
+    willing_to_relocate: str = Field(default="", max_length=500)
+    years_of_experience: str = Field(default="", max_length=100)
+    how_did_you_hear: str = Field(default="", max_length=200)
+    gender: str = Field(default="", max_length=100)
+    ethnicity: str = Field(default="", max_length=100)
+    veteran_status: str = Field(default="", max_length=100)
+    disability_status: str = Field(default="", max_length=100)
+
+
+class UserProfile(BaseModel):
+    preferences: Preferences = Field(default_factory=Preferences)
+    application: Application = Field(default_factory=Application)
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    conditional: bool = False
+
+
+class GraphShape(BaseModel):
+    """The nodes and edges of one agent's LangGraph graph, read from the compiled graph."""
+
+    nodes: list[GraphNode] = Field(default_factory=list)
+    edges: list[GraphEdge] = Field(default_factory=list)
 
 
 class SourceInfo(BaseModel):
@@ -256,5 +383,9 @@ class LeadStatus(StrEnum):
     FILLING = "filling"
     FORM_FILLED = "form_filled"
     APPLIED = "applied"
+    # What became of an application, as the company answered.
+    IN_REVIEW = "in_review"
+    INTERVIEW = "interview"
+    REJECTED = "rejected"
     SKIPPED = "skipped"
     FAILED = "failed"

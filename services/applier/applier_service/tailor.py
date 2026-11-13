@@ -99,6 +99,9 @@ async def tailor(command: ApplyCommand, settings: ApplierSettings) -> dict[str, 
         trace_name="applier.tailor",
         job_id=command.job_id,
         max_budget_usd=settings.tailor_budget_usd,
+        access=settings.claude_access,
+        api_key=settings.api_key,
+        model=settings.tailor_model,
         extra_args=[
             "--restricted",
             "--tools", "Read,Write,Edit,Glob,Grep,Bash",
@@ -112,7 +115,10 @@ async def tailor(command: ApplyCommand, settings: ApplierSettings) -> dict[str, 
         path for path in folder.glob("*.pdf") if path.stat().st_mtime >= jd_path.stat().st_mtime
     ]
     if not pdfs:
-        raise ClaudeError(f"polishmycv finished without producing a PDF in {folder.name}")
+        raise ClaudeError(
+            f"polishmycv finished without producing a PDF in {folder.name}",
+            cost_usd=result.cost_usd,
+        )
     return {
         "action": "tailor",
         "application_dir": folder.name,

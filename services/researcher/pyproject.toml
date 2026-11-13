@@ -3,7 +3,7 @@ name = "researcher-service"
 version = "0.1.0"
 description = "LeadScout researcher agent."
 requires-python = ">=3.12"
-dependencies = ["leadscout-common[llm]", "deepagents>=0.7", "selectolax>=0.3"]
+dependencies = ["leadscout-common[llm,graphs]", "deepagents>=0.7", "selectolax>=0.3"]
 
 [tool.uv.sources]
 leadscout-common = { workspace = true }

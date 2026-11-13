@@ -8,6 +8,7 @@
 import { createServer } from 'node:http';
 import { applicationFile } from './files.mjs';
 import { pipeline } from './fixtures.mjs';
+import { POOLED } from './seeds.mjs';
 import {
   eventsOutsideRuns,
   fillForm,
@@ -99,7 +100,7 @@ function sendFile(res, jobId, name) {
 /** [method, path pattern, handler(match, { query, body })] -> JSON-serialisable result */
 const ROUTES = [
   ['GET', /^\/api\/health$/, () => ({ status: 'ok' })],
-  ['GET', /^\/api\/pipeline$/, () => withSourceToggles(pipeline)],
+  ['GET', /^\/api\/pipeline$/, () => livePipeline(pipeline)],
   ['GET', /^\/api\/runs$/, () => state.runs],
   ['POST', /^\/api\/runs$/, (_, { body }) => startRun(body)],
   ['GET', /^\/api\/runs\/([^/]+)$/, ([, id]) => runOr404(id)],
@@ -114,10 +115,17 @@ const ROUTES = [
   ['PUT', /^\/api\/settings$/, (_, { body }) => (state.settings = { ...state.settings, ...body })],
 ];
 
-/** The pipeline's source nodes follow the toggles saved in Setup. */
-function withSourceToggles({ nodes, edges }) {
+/** How many workers an agent has: its own number from Setup, else the common one. */
+function workersFor(agent) {
+  if (!POOLED.includes(agent)) return 1;
+  return state.settings.workers || 1;
+}
+
+/** The pipeline with what Setup decides: which sources are on, how many workers an agent has. */
+function livePipeline({ nodes, edges }) {
   const enabled = (node) => state.settings.sources[node.id.replace('source:', '')] ?? node.enabled;
-  return { nodes: nodes.map((node) => ({ ...node, enabled: enabled(node) })), edges };
+  const live = (node) => ({ ...node, enabled: enabled(node), workers: workersFor(node.id) });
+  return { nodes: nodes.map(live), edges };
 }
 
 function runOr404(id) {

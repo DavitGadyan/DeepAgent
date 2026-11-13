@@ -20,6 +20,12 @@ TRANSIENT_MARKERS = (
 )
 
 
+UNREACHABLE = (httpx.ConnectError, httpx.ConnectTimeout, ConnectionError)
+# By name, so this module needs neither package: the OpenAI client wraps the httpx error
+# (vLLM down), and psycopg raises OperationalError when Postgres is down (checkpoints).
+UNREACHABLE_NAMES = {"APIConnectionError", "OperationalError", "PoolTimeout"}
+
+
 def is_transient(error: Exception) -> bool:
     """True for failures a second attempt can fix."""
     if isinstance(error, httpx.HTTPStatusError):
@@ -41,7 +47,14 @@ def is_unreachable(error: Exception) -> bool:
     Jobs that hit this are not the jobs' fault; the worker waits for the server instead
     of failing them.
     """
-    return isinstance(error, httpx.ConnectError | httpx.ConnectTimeout | ConnectionError)
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, UNREACHABLE) or type(current).__name__ in UNREACHABLE_NAMES:
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _retryable_status(status: int) -> bool:

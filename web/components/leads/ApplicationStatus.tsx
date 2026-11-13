@@ -1,6 +1,6 @@
 import { CircleCheck, LoaderCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { formatUsd } from '@/lib/format';
+import { formatDate, formatUsd } from '@/lib/format';
 import type { Lead } from '@/lib/types';
 
 function Progress({ children }: { children: ReactNode }) {
@@ -21,6 +21,24 @@ function UnfinishedFill({ error }: { error: string }) {
         If it stopped at a login or CAPTCHA, get past it in the open browser window first. Then fill
         the form again, or apply by hand with the files below.
       </p>
+    </div>
+  );
+}
+
+/** When and where the application was sent, for one made before LeadScout or outside it. */
+function SentNote({ lead }: { lead: Lead }) {
+  const { applied_at: appliedAt, note } = lead.application ?? {};
+  const parts = [appliedAt ? `Sent ${formatDate(appliedAt)}` : '', note ?? ''].filter(Boolean);
+  if (parts.length === 0) return null;
+  return <p className="text-[0.78rem] text-muted">{parts.join(' · ')}</p>;
+}
+
+/** What the company answered to an application that was sent. */
+function Outcome({ lead, tone, children }: { lead: Lead; tone: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1">
+      <p className={`text-[0.84rem] leading-relaxed ${tone}`}>{children}</p>
+      <SentNote lead={lead} />
     </div>
   );
 }
@@ -53,10 +71,31 @@ export function ApplicationStatus({ lead }: { lead: Lead }) {
       );
     case 'applied':
       return (
-        <p className="flex items-center gap-2 text-[0.84rem] font-semibold text-fg">
-          <CircleCheck size={16} className="text-accent" aria-hidden="true" />
-          Applied
-        </p>
+        <div className="grid gap-1">
+          <p className="flex items-center gap-2 text-[0.84rem] font-semibold text-fg">
+            <CircleCheck size={16} className="text-accent" aria-hidden="true" />
+            Applied
+          </p>
+          <SentNote lead={lead} />
+        </div>
+      );
+    case 'in_review':
+      return (
+        <Outcome lead={lead} tone="text-fg">
+          The company is reviewing your application.
+        </Outcome>
+      );
+    case 'interview':
+      return (
+        <Outcome lead={lead} tone="font-semibold text-fg">
+          The company asked for an interview.
+        </Outcome>
+      );
+    case 'rejected':
+      return (
+        <Outcome lead={lead} tone="text-danger">
+          The company rejected this application.
+        </Outcome>
       );
     case 'skipped':
       return <p className="text-[0.84rem] text-muted">You skipped this lead.</p>;

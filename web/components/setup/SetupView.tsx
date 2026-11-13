@@ -6,6 +6,7 @@ import type { Pipeline } from '@/lib/types';
 import { useApi } from '@/lib/useApi';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ErrorState, Loading } from '@/components/ui/States';
+import { ProfileForm } from './ProfileForm';
 import { SettingsForm } from './SettingsForm';
 
 /** Read-only: models are configured on the backend, not from this page. */
@@ -41,20 +42,25 @@ function AgentList({ pipeline }: { pipeline: Pipeline }) {
   );
 }
 
-/** The Setup page: what the pipeline looks for, and which model each agent runs on. */
+/** The Setup page: what the pipeline looks for, how the applier signs in, your profile,
+ * and which model each agent runs on. */
 export function SetupView() {
   const settings = useApi('settings', api.settings);
   const pipeline = useApi('pipeline', api.pipeline);
+  const profile = useApi('profile', api.profile);
 
-  const error = settings.error ?? pipeline.error;
-  if (error && (!settings.data || !pipeline.data)) {
+  const error = settings.error ?? pipeline.error ?? profile.error;
+  if (error && (!settings.data || !pipeline.data || !profile.data)) {
     const retry = () => {
       settings.reload();
       pipeline.reload();
+      profile.reload();
     };
     return <ErrorState error={error} onRetry={retry} />;
   }
-  if (!settings.data || !pipeline.data) return <Loading label="Loading settings…" />;
+  if (!settings.data || !pipeline.data || !profile.data) {
+    return <Loading label="Loading settings…" />;
+  }
 
   return (
     <div className="mx-auto grid max-w-5xl gap-3 p-4">
@@ -64,6 +70,12 @@ export function SetupView() {
         initial={settings.data}
         sources={pipelineSources(pipeline.data)}
         onSaved={settings.mutate}
+      />
+      <h2 className="mt-4 text-[1rem] font-semibold text-fg">Your profile</h2>
+      <ProfileForm
+        key={JSON.stringify(profile.data)}
+        initial={profile.data}
+        onSaved={profile.mutate}
       />
       <AgentList pipeline={pipeline.data} />
     </div>

@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# Project rule: code in this repo is never pushed to a remote.
-# To lift it on purpose: git config --unset core.hooksPath
-echo "pre-push hook: pushing is disabled for this repository (.githooks/pre-push)." >&2
-exit 1

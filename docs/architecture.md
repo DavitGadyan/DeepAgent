@@ -34,7 +34,8 @@ A `JobMessage` grows as it travels: each stage fills in its own field and passes
 ## Events are the source of truth
 
 An `Event` records one step of one agent (`item.started`, `item.finished`, `item.dropped`,
-`item.failed`, `item.waiting`, plus `source.*`, `scout.done` and `run.*`). The orchestrator
+`item.failed`, `item.waiting`, `item.progress` for a step inside an agent's graph, plus
+`source.*`, `scout.done` and `run.*`). The orchestrator
 appends every event to Postgres and derives everything else from them:
 
 - **Leads** are a projection (`orchestrator_service/projector.py`). The filter's
@@ -44,6 +45,10 @@ appends every event to Postgres and derives everything else from them:
   message cannot skew them. Each event that ends a job's trip is marked (`ends_job`). A run
   is finished when the scout has said `scout.done` and no job is still in flight.
 - **Pipeline failures** are shown on the lead (`pipeline_error`) until that step succeeds.
+- **Costs** are read from the applier's events (`orchestrator_service/costs.py`): each
+  session's cost, who paid (Claude login or Console key) and the model.
+- **The leads table** gets each changed lead row pushed over the same event connection
+  (messages named `lead`), so it needs no polling.
 - **The live graph** is a reduction of the same events in the browser
   (`web/lib/pipeline/reducer.ts`). The time scrubber replays a run by reducing its stored
   events up to the chosen moment, so the past view is exact, not approximated.
@@ -53,6 +58,8 @@ appends every event to Postgres and derives everything else from them:
 | State | Owner | Others read it through |
 |---|---|---|
 | Postgres (events, leads, runs, settings) | orchestrator only | the REST API |
+| LangGraph checkpoints (own tables in the same Postgres) | extractor, scorer, researcher | nobody else |
+| Each agent's graph shape | that agent | Redis (`leadscout:graphs`), so the UI draws the real graph |
 | User settings | orchestrator | a Redis mirror (`leadscout:settings`) |
 | Source catalogue | scout | Redis (`leadscout:sources`), so the graph shows real adapters |
 | Seen job ids | scout | Redis set, for de-duplication across runs |
@@ -69,6 +76,39 @@ small schema-constrained calls and the scorer one. Only the researcher is a deep
 (`deepagents.create_deep_agent`) that plans its own tool calls, and it is boxed in: it sees
 two tools (deepagents' built-ins are hidden by a harness profile), a step limit and a time
 budget.
+
+**Rows: N whole pipelines side by side.** The worker count N is the number of rows. The
+scout deals the jobs of a run to the rows in turn (`JobMessage.lane`), so every row gets
+the same share. Each agent container has one worker per row (`worker.run_stage`): its
+reader hands every job to the queue of the job's row, and that row's worker handles its
+jobs one after the other. Rows never exchange jobs, which is what the graph shows: no
+edge leads from one row to another. Inside a row the agents overlap: while the extractor
+of a row works on one job, its scorer works on the one before. The reader stays one Redis
+consumer and a job is acknowledged when it is done, so a crash redelivers the jobs that
+were in progress or waiting in memory. The price of strict rows: a row that runs out of
+jobs does not take over another row's.
+
+**Stopping a run.** The orchestrator marks the run `stopped` and sets a key in Redis.
+The scout forwards nothing more. Every agent lets go of the run's jobs: a waiting one
+when its turn comes, one in progress within two seconds (its task is cancelled). Each is
+reported as `item.dropped` with `stopped: true` and acknowledged, so nothing comes back
+after a restart. Leads keep what the agents added so far, and a checkpoint of a job that
+was cut off stays, so a later forced run continues it.
+
+**Checkpoints: a job that was cut off continues.** The extractor (`facts` → `highlights`
+→ `tidy`), the scorer (`judge` → `rubric`) and the researcher (its agent loop) are
+LangGraph graphs. LangGraph's Postgres checkpointer saves the state after every node, in
+its own tables in the database the stack already has. One job is one thread; the stored
+key is `<job id>/<agent>`, because three different graphs cannot share a thread. When a
+job comes back after a crash (Redis redelivers it), `checkpoints.run_thread` continues at
+the node that did not finish, so a model call that was paid for is not repeated. A job
+that failed for a reason a retry cannot fix has its thread removed; a finished thread that
+is processed again (a forced run) starts fresh.
+
+**One model layer, two kinds of server.** `leadscout_common/llm.py` builds a `ChatOllama`
+or, with `LLM_PROVIDER=openai`, a `ChatOpenAI` pointed at any OpenAI-compatible server
+(vLLM). Structured output uses the server's JSON-schema constraint on both. The agents do
+not know which one they talk to.
 
 **The model judges, the code computes.** Small models classify well and add up badly. The
 scorer's model picks which required skills the CV shows and judges logistics; role,
@@ -90,7 +130,8 @@ profile. `leadscout_common/llm.py` therefore sets `num_ctx` and the matching
 **At-least-once delivery, idempotent consumers.** A stage acknowledges a message only
 after handling it, so a crash redelivers it. Events carry a unique id and the orchestrator
 ignores one it has already stored. Outages are waited out rather than turned into failed
-jobs: a stage that cannot reach Ollama retries the same job with back-off, and the
+jobs: a stage that cannot reach the model server (or the checkpoint database) retries the
+same job with back-off, and the
 orchestrator retries an event until the database stores it (only an event whose own data
 is invalid is skipped). Its consumer task is supervised and restarted; `/api/health`
 answers 503 if it stops. The applier is the exception: it acknowledges first, because an
@@ -117,6 +158,8 @@ With no Langfuse keys set, every tracing function is a no-op.
 ## Limits worth knowing
 
 - No authentication. Every published port is bound to `127.0.0.1`; do not expose it.
+- The credit balance of your Anthropic account is not shown: Anthropic has no API for
+  it. The Cost page shows what LeadScout's own sessions cost and links to the Console.
 - No migration tool: tables are created at start-up and `db.upgrade_schema` adds the
   columns introduced since the first version.
 - A run whose queued messages were lost (for example Redis data deleted) stays "running".

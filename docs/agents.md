@@ -3,7 +3,12 @@
 One container each (the applier runs on the host). Every pipeline agent is the same small
 shape: a `handle(message)` function plugged into the shared loop in
 `packages/common/leadscout_common/worker.py`, which adds events, timing, retries,
-forwarding, tracing, and waiting out an unreachable model server.
+forwarding, tracing, waiting out an unreachable model server, one worker per row of the
+pipeline (a job stays in its row), and letting go of the jobs of a run that was stopped. The extractor, scorer and researcher run each
+job as a LangGraph thread with checkpoints in Postgres
+(`leadscout_common/checkpoints.py`): after a crash the job continues at the node that did
+not finish. Each of them publishes its graph, and reports the node a job enters, so the
+Pipeline page can draw the graph and the job's position in it.
 
 | Agent | Reads → writes | Model | Code | Prompts | Checked by |
 |---|---|---|---|---|---|
@@ -19,7 +24,7 @@ forwarding, tracing, and waiting out an unreachable model server.
 Runs every enabled adapter in `scout_service/sources/` (four at a time). It ranks each
 source's postings (title contains a target phrase, then a word of one, then the rest) and
 walks that list, forwarding postings it has not seen before until `limit_per_source` new
-ones are sent; with **force**, the first `limit_per_source` are sent again. A posting is
+ones are sent, dealing them to the rows of the pipeline in turn; with **force**, the first `limit_per_source` are sent again. A posting is
 marked seen only after it was published. It makes no relevance decision. One bad record
 costs only itself (counted as `skipped`), and a failing source is reported as
 `source.failed` without stopping the others. Jobicy and Remotive are asked at most once
@@ -49,7 +54,8 @@ scores low; a wrongly dropped one is a lost lead, so the rule leans towards keep
 
 ## Extractor
 
-Two schema-constrained calls on the same posting: the facts (`JobFacts`: role family,
+A graph of three nodes: `facts` → `highlights` → `tidy`. The first two are
+schema-constrained calls on the same posting: the facts (`JobFacts`: role family,
 seniority, remote policy, contract, locations, salary, years, required and nice-to-have
 skills) and the key points (`JobHighlights`: one-liner, summary, what you'll do, what they
 need, what you get). The lead page shows the key points instead of the full text.
@@ -66,8 +72,8 @@ nothing about remote work. Placeholders such as "unknown" inside lists are remov
 
 ## Scorer
 
-The model is asked for what needs reading; the code decides the rest
-(`scorer_service/rubric.py`):
+A graph of two nodes: `judge` (the model) → `rubric` (the code). The model is asked for
+what needs reading; the code decides the rest (`scorer_service/rubric.py`):
 
 | Part | Points | Who decides |
 |---|---|---|
@@ -81,7 +87,8 @@ answered 42, gave "AI Engineer" 0 of 25 for role, and matched only "Python" agai
 and portfolio that name LangChain, LangGraph, scikit-learn, Pinecone and MLflow.
 
 Its inputs are the CV text, the skills evidenced in the polishmycv portfolio catalogue,
-the `preferences` section of `data/profile/profile.yaml`, and the extracted facts. The
+the `preferences` section of `data/profile/profile.yaml` (read again when the file
+changes, so a save on the Setup page applies to the next job), and the extracted facts. The
 catalogue matters: a one-page CV names few tools. The `application` section of
 `profile.yaml` (phone, salary expectation and so on) is never sent to the model. Jobs
 scoring under `research_min_score` stop here.
@@ -89,7 +96,8 @@ scoring under `research_min_score` stop here.
 ## Researcher
 
 A deep agent (`deepagents.create_deep_agent`) that sees exactly two tools and its answer
-format. deepagents adds a file system, a to-do list and a `task` subagent by default; a
+format. Its graph is the loop `model` ↔ `tools`, checkpointed after every step; a research
+that ran out of time starts fresh the next time. deepagents adds a file system, a to-do list and a `task` subagent by default; a
 harness profile for Ollama models hides them (`researcher_service/agent.py`), which also
 takes about 2,700 tokens off every request.
 
@@ -116,6 +124,11 @@ and one page.
 Runs on the host and only on a command for one lead that you approved in the UI. A
 command older than 15 minutes (pressed while the applier was off) is not acted on. The
 command in progress is noted in Redis, so a stop or a crash is reported on the lead.
+Before each command it reads the Setup page's choices: **Claude access** (your Claude
+login, with any `ANTHROPIC_API_KEY` removed from the session, or a Console API key, read
+from `.env` at that moment, so adding it needs no restart) and the spending cap per
+session. It reports to the Setup page whether a key is set (every 10 s) and whether Claude
+Code is signed in (every minute; method and plan only).
 
 **Tailor CV** runs `claude --print --restricted` in the `polishmycv` repo with the skill's
 instructions as part of its system prompt and an output folder per lead

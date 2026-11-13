@@ -2,48 +2,27 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from leadscout_common.schemas import Agent, ApplyCommand, Event, EventType, LeadStatus, Stream
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..application_files import applications_dir
+from ..costs import month_budget_left
 from ..db import LeadRow
-from ..deps import BusDep, SessionDep
+from ..deps import BroadcasterDep, BusDep, SessionDep
+from ..lead_view import LeadSummary
 from ..projector import restored_status
+from ..settings_store import read_settings
 
 router = APIRouter(prefix="/api/leads")
 CAN_FILL_FORM = {LeadStatus.CV_READY.value, LeadStatus.FORM_FILLED.value, LeadStatus.FAILED.value}
 APPLIER_BUSY = {LeadStatus.TAILORING.value, LeadStatus.FILLING.value}
-
-
-def applications_dir() -> Path:
-    """Where the applier's output folders are visible to this process (read-only mount)."""
-    return Path(os.environ.get("APPLICATIONS_DIR", "data/applications")).resolve()
-
-
-class LeadSummary(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    job_id: str
-    status: str
-    score: int | None
-    title: str
-    company: str
-    location: str
-    source: str
-    url: str
-    remote_policy: str
-    seniority: str
-    role_family: str
-    posted_at: datetime | None
-    updated_at: datetime
 
 
 class LeadOut(LeadSummary):
@@ -53,6 +32,12 @@ class LeadOut(LeadSummary):
     brief: dict[str, Any] | None
     application: dict[str, Any] | None
     pipeline_error: dict[str, Any] | None
+
+
+ORDER = {
+    "newest": (LeadRow.created_at.desc(), LeadRow.job_id),
+    "score": (LeadRow.score.desc().nulls_last(), LeadRow.created_at.desc(), LeadRow.job_id),
+}
 
 
 class LeadPage(BaseModel):
@@ -81,11 +66,21 @@ async def list_leads(
     source: str | None = None,
     remote: bool = False,
     q: str | None = None,
+    found_after: datetime | None = None,
+    found_before: datetime | None = None,
+    sort: Literal["newest", "score"] = "newest",
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> LeadPage:
-    """Leads ranked by score; unscored ones last."""
+    """Leads, newest found first (or best score first, unscored last).
+
+    `found_after` / `found_before` bound the time LeadScout found the posting.
+    """
     conditions = []
+    if found_after:
+        conditions.append(LeadRow.created_at >= found_after)
+    if found_before:
+        conditions.append(LeadRow.created_at < found_before)
     if min_score:
         conditions.append(LeadRow.score >= min_score)
     if status:
@@ -102,11 +97,7 @@ async def list_leads(
 
     total = await session.scalar(select(func.count()).select_from(LeadRow).where(*conditions))
     rows = await session.scalars(
-        select(LeadRow)
-        .where(*conditions)
-        .order_by(LeadRow.score.desc().nulls_last(), LeadRow.updated_at.desc())
-        .limit(limit)
-        .offset(offset)
+        select(LeadRow).where(*conditions).order_by(*ORDER[sort]).limit(limit).offset(offset)
     )
     return LeadPage(items=[LeadSummary.model_validate(row) for row in rows], total=total or 0)
 
@@ -118,12 +109,17 @@ async def get_lead(job_id: str, session: SessionDep) -> LeadOut:
 
 @router.patch("/{job_id}")
 async def change_status(
-    job_id: str, change: StatusChange, session: SessionDep, bus: BusDep
+    job_id: str,
+    change: StatusChange,
+    session: SessionDep,
+    bus: BusDep,
+    broadcaster: BroadcasterDep,
 ) -> LeadOut:
     lead = await _lead_or_404(session, job_id)
     was_busy = lead.status in APPLIER_BUSY
     lead.status = restored_status(lead) if change.status == "new" else change.status
     await session.commit()
+    broadcaster.publish_lead(lead)
     if was_busy:
         # Settle the Applier node on the pipeline graph; the lead itself is already reset.
         await bus.emit(
@@ -139,25 +135,33 @@ async def change_status(
 
 
 @router.post("/{job_id}/tailor", status_code=202)
-async def tailor_cv(job_id: str, session: SessionDep, bus: BusDep) -> LeadOut:
+async def tailor_cv(
+    job_id: str, session: SessionDep, bus: BusDep, broadcaster: BroadcasterDep
+) -> LeadOut:
     """User approval #1: ask the applier to tailor the CV and cover letter for this job."""
     lead = await _lead_or_404(session, job_id)
     _refuse_while_busy(lead)
+    await _refuse_over_budget(session, bus)
     lead.status = LeadStatus.TAILORING.value
     await session.commit()
+    broadcaster.publish_lead(lead)
     await bus.publish(Stream.APPLY, _apply_command(lead, "tailor"))
     return LeadOut.model_validate(lead)
 
 
 @router.post("/{job_id}/apply", status_code=202)
-async def fill_form(job_id: str, session: SessionDep, bus: BusDep) -> LeadOut:
+async def fill_form(
+    job_id: str, session: SessionDep, bus: BusDep, broadcaster: BroadcasterDep
+) -> LeadOut:
     """User approval #2: ask the applier to fill the form. It never presses Submit."""
     lead = await _lead_or_404(session, job_id)
     _refuse_while_busy(lead)
     if lead.status not in CAN_FILL_FORM or not (lead.application or {}).get("files"):
         raise HTTPException(409, "Tailor the CV first")
+    await _refuse_over_budget(session, bus)
     lead.status = LeadStatus.FILLING.value
     await session.commit()
+    broadcaster.publish_lead(lead)
     await bus.publish(Stream.APPLY, _apply_command(lead, "fill_form"))
     return LeadOut.model_validate(lead)
 
@@ -172,6 +176,18 @@ async def application_file(job_id: str, name: str, session: SessionDep) -> FileR
     if not path.is_relative_to(applications_dir()) or not path.is_file():
         raise HTTPException(404, "File not found")
     return FileResponse(path)
+
+
+async def _refuse_over_budget(session: AsyncSession, bus: BusDep) -> None:
+    """No new Claude session once this month's spend reached the budget from the Cost page."""
+    settings = await read_settings(session, bus)
+    left = await month_budget_left(session, settings.monthly_budget_usd)
+    if left is not None and left <= 0:
+        raise HTTPException(
+            409,
+            f"The monthly budget of ${settings.monthly_budget_usd:g} is used up. "
+            "Raise it on the Cost page to continue.",
+        )
 
 
 def _refuse_while_busy(lead: LeadRow) -> None:

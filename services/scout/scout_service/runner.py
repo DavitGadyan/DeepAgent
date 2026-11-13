@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import os
 import time
@@ -22,7 +23,7 @@ from leadscout_common.schemas import (
     Settings,
     Stream,
 )
-from leadscout_common.shared_state import SEEN_KEY, load_settings, mark_seen
+from leadscout_common.shared_state import SEEN_KEY, load_settings, mark_seen, run_stopped
 from leadscout_common.text import contains_phrase
 
 from .sources import ALL_SOURCES
@@ -33,6 +34,18 @@ from .sources.text import keyword_stems, title_has_stem
 log = logging.getLogger(__name__)
 MAX_PARALLEL_SOURCES = 4
 MAX_ERROR_CHARS = 300
+
+
+class Dealer:
+    """Gives each posting of a run its row of the pipeline: the rows in turn, so every
+    row gets the same share. One per run, shared by the sources fetched at the same time."""
+
+    def __init__(self, rows: int) -> None:
+        self._rows = max(rows, 1)
+        self._turn = itertools.count()
+
+    def next_row(self) -> int:
+        return next(self._turn) % self._rows + 1
 
 
 def scraped_sources_allowed() -> bool:
@@ -74,6 +87,7 @@ async def execute_run(bus: Bus, command: RunCommand) -> None:
     settings = await load_settings(bus)
     limit = command.options.limit_per_source or settings.limit_per_source
     gate = asyncio.Semaphore(MAX_PARALLEL_SOURCES)
+    dealer = Dealer(rows=command.options.workers or settings.workers)
 
     try:
         async with new_http_client() as http:
@@ -83,7 +97,10 @@ async def execute_run(bus: Bus, command: RunCommand) -> None:
 
             async def run_source(source: Source) -> None:
                 async with gate:
-                    await _run_one_source(bus, command, source, shared)
+                    # A stopped run fetches nothing more; sources already started finish
+                    # their request and forward nothing.
+                    if not await run_stopped(bus, command.run_id):
+                        await _run_one_source(bus, command, source, shared, dealer)
 
             sources = select_sources(command, settings)
             results = await asyncio.gather(*map(run_source, sources), return_exceptions=True)
@@ -97,7 +114,7 @@ async def execute_run(bus: Bus, command: RunCommand) -> None:
 
 
 async def _run_one_source(
-    bus: Bus, command: RunCommand, source: Source, shared: FetchContext
+    bus: Bus, command: RunCommand, source: Source, shared: FetchContext, dealer: Dealer
 ) -> None:
     """Fetch one source and forward its new postings; any failure becomes `source.failed`.
 
@@ -109,7 +126,7 @@ async def _run_one_source(
         await bus.emit(_source_event(command, source, EventType.SOURCE_STARTED))
         ctx = replace(shared, settings=_source_settings(source))
         postings = await with_retry(lambda: _fetch(source, ctx))
-        forwarded, unsendable = await _forward_new(bus, command, postings, ctx)
+        forwarded, unsendable = await _forward_new(bus, command, postings, ctx, dealer)
     except Exception as error:
         reason = _failure_text(error)
         log.warning("Source %s failed: %s", source.name, reason)
@@ -139,7 +156,7 @@ async def _fetch(source: Source, ctx: FetchContext) -> list[JobPosting]:
 
 
 async def _forward_new(
-    bus: Bus, command: RunCommand, postings: list[JobPosting], ctx: FetchContext
+    bus: Bus, command: RunCommand, postings: list[JobPosting], ctx: FetchContext, dealer: Dealer
 ) -> tuple[int, int]:
     """Forward up to `ctx.limit` postings not seen before, best titles first.
 
@@ -150,10 +167,10 @@ async def _forward_new(
     """
     forwarded = unsendable = 0
     for posting in rank_by_keywords(postings, ctx.keywords):
-        if forwarded >= ctx.limit:
+        if forwarded >= ctx.limit or await run_stopped(bus, command.run_id):
             break
         try:
-            if await _forward_if_new(bus, command, posting):
+            if await _forward_if_new(bus, command, posting, dealer):
                 forwarded += 1
         except ValueError as error:  # e.g. a lone surrogate from the feed's JSON
             log.warning("Skipping unsendable posting %r: %s", posting.url, error)
@@ -161,7 +178,9 @@ async def _forward_new(
     return forwarded, unsendable
 
 
-async def _forward_if_new(bus: Bus, command: RunCommand, posting: JobPosting) -> bool:
+async def _forward_if_new(
+    bus: Bus, command: RunCommand, posting: JobPosting, dealer: Dealer
+) -> bool:
     """Publish a posting to jobs.raw unless it was seen before; mark it seen only afterwards.
 
     Publishing first means a crash between the two steps repeats the posting on a later
@@ -171,7 +190,8 @@ async def _forward_if_new(bus: Bus, command: RunCommand, posting: JobPosting) ->
     job_id = posting.job_id
     if not command.options.force and await bus.redis.sismember(SEEN_KEY, job_id):
         return False
-    await bus.publish(Stream.RAW, JobMessage(run_id=command.run_id, job=posting))
+    message = JobMessage(run_id=command.run_id, job=posting, lane=dealer.next_row())
+    await bus.publish(Stream.RAW, message)
     await mark_seen(bus, job_id)
     await bus.emit(
         Event(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from leadscout_common.config import agent_config
-from leadscout_common.schemas import Agent, Settings, SourceInfo
+from leadscout_common.schemas import Agent, GraphShape, Settings, SourceInfo
 from pydantic import BaseModel
 
 NodeKind = Literal["source", "tool", "llm", "deep", "human", "store"]
@@ -19,6 +19,12 @@ class PipelineNode(BaseModel):
     model: str = ""
     parent: str | None = None
     enabled: bool = True
+    # Agents only. How many workers the agent has: one per row of the pipeline.
+    workers: int = 1
+    # The agent's LangGraph graph, as the agent itself published it; None for an agent
+    # that is not a graph (it has `steps` instead) or has not started yet.
+    graph: GraphShape | None = None
+    steps: list[str] = []
 
 
 class PipelineEdge(BaseModel):
@@ -71,9 +77,19 @@ STAGES: list[tuple[Agent, str, NodeKind, str]] = [
     ),
 ]
 APPLIER_MODEL = "Claude Code (headless)"
+# What the agents that are not LangGraph graphs do, in order (shown when a node is expanded).
+FIXED_STEPS: dict[Agent, list[str]] = {
+    Agent.SCOUT: ["Fetch every enabled source", "Rank postings", "Forward the new ones"],
+    Agent.FILTER: ["Title keywords", "Title embedding", "Posting text"],
+    Agent.APPLIER: ["Tailor CV (polishmycv)", "Fill the form", "Stop before Submit"],
+}
+# One at a time on purpose: the scout runs a whole source list, the applier one application.
+SINGLE_WORKER = {Agent.SCOUT, Agent.APPLIER}
 
 
-def build_pipeline(catalogue: list[SourceInfo], settings: Settings) -> Pipeline:
+def build_pipeline(
+    catalogue: list[SourceInfo], settings: Settings, graphs: dict[str, GraphShape] | None = None
+) -> Pipeline:
     nodes = [
         PipelineNode(
             id=f"source:{source.name}",
@@ -93,7 +109,14 @@ def build_pipeline(catalogue: list[SourceInfo], settings: Settings) -> Pipeline:
         model = APPLIER_MODEL if agent == Agent.APPLIER else agent_config(agent.value).model
         nodes.append(
             PipelineNode(
-                id=agent.value, label=label, kind=kind, description=description, model=model
+                id=agent.value,
+                label=label,
+                kind=kind,
+                description=description,
+                model=model,
+                workers=1 if agent in SINGLE_WORKER else settings.workers,
+                graph=(graphs or {}).get(agent.value),
+                steps=FIXED_STEPS.get(agent, []),
             )
         )
     stage_ids = [agent.value for agent, *_ in STAGES]

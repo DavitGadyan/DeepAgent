@@ -100,6 +100,7 @@ function createRun(options, startedAt) {
       limit_per_source: state.settings.limit_per_source,
       force: false,
       ...options,
+      workers: state.settings.workers,
     },
     stats: runStats([]),
   };
@@ -113,6 +114,8 @@ const enabledSources = () =>
 
 /** POST /api/runs: plays the scripted run in real time. */
 export function startRun(options) {
+  // The worker count belongs to the agents, not to one run: it stays until changed.
+  if (options.workers) state.settings.workers = options.workers;
   const run = createRun(options, Date.now());
   const sources = run.options.sources.length ? run.options.sources : enabledSources();
   const perSource = new Map();
@@ -120,7 +123,8 @@ export function startRun(options) {
     perSource.set(lead.source, (perSource.get(lead.source) ?? 0) + 1);
     return perSource.get(lead.source) <= run.options.limit_per_source;
   });
-  for (const { at, event } of buildTimeline(jobs, sources, state.settings.research_min_score)) {
+  const { research_min_score: minScore, workers } = state.settings;
+  for (const { at, event } of buildTimeline(jobs, sources, minScore, workers)) {
     setTimeout(() => record(run.id, event), at / SPEED);
   }
   return run;
@@ -130,11 +134,8 @@ export function startRun(options) {
 function seedPastRun(jobs, hoursAgo, options = {}) {
   const startedAt = Date.now() - hoursAgo * 3600_000;
   const run = createRun(options, startedAt);
-  for (const { at, event } of buildTimeline(
-    jobs,
-    enabledSources(),
-    state.settings.research_min_score,
-  )) {
+  const { research_min_score: minScore, workers } = state.settings;
+  for (const { at, event } of buildTimeline(jobs, enabledSources(), minScore, workers)) {
     record(run.id, event, startedAt + at);
   }
 }

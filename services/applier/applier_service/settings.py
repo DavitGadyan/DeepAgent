@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -22,10 +22,18 @@ class ApplierSettings:
     tailor_timeout_s: int
     fill_timeout_s: int
     # Caps on what one Claude Code session may spend (`--max-budget-usd`); 0 means no cap.
+    # Set on the Setup page; these are only the values before the first save.
     tailor_budget_usd: float
     fill_budget_usd: float
     # A button press older than this when the applier sees it is not acted on.
     max_command_age_s: int
+    # "login" (your Claude account) or "console" (ANTHROPIC_API_KEY); set on the Setup page.
+    claude_access: str = "login"
+    # Model for Tailor CV ("" = Claude Code's default); set on the Setup page.
+    tailor_model: str = ""
+    # The Console key, read from `env_file` for each command (see `read_api_key`).
+    api_key: str = field(default="", repr=False)
+    env_file: Path = REPO_ROOT / ".env"
 
     @property
     def output_root(self) -> Path:
@@ -39,6 +47,33 @@ class ApplierSettings:
     @property
     def cdp_url(self) -> str:
         return f"http://127.0.0.1:{self.cdp_port}"
+
+
+def read_api_key(env_file: Path) -> str:
+    """`ANTHROPIC_API_KEY` as `.env` says now, so adding it there needs no restart.
+
+    A key only in the environment the worker started with (exported in the shell) is the
+    fallback.
+    """
+    found: str | None = None
+    try:
+        lines = env_file.read_text().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        name, equals, value = line.strip().removeprefix("export ").partition("=")
+        if equals and name.strip() == "ANTHROPIC_API_KEY":
+            found = _env_value(value)  # the last one wins, as in the shell
+    return found if found else os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+def _env_value(raw: str) -> str:
+    """`"sk-..."  # note` -> sk-...: quotes removed, a trailing comment ignored."""
+    value = raw.strip()
+    if value[:1] in ("'", '"'):
+        closing = value.find(value[0], 1)
+        return value[1:closing] if closing > 0 else value[1:]
+    return value.split(" #", 1)[0].strip()
 
 
 def _path(name: str, default: str | Path) -> Path:
@@ -58,7 +93,8 @@ def load_settings() -> ApplierSettings:
         cdp_port=int(env.get("APPLIER_CDP_PORT", "9333")),
         tailor_timeout_s=int(env.get("APPLIER_TAILOR_TIMEOUT_S", "3600")),
         fill_timeout_s=int(env.get("APPLIER_FILL_TIMEOUT_S", "900")),
-        tailor_budget_usd=float(env.get("APPLIER_TAILOR_BUDGET_USD", "10")),
-        fill_budget_usd=float(env.get("APPLIER_FILL_BUDGET_USD", "5")),
+        tailor_budget_usd=10,
+        fill_budget_usd=5,
         max_command_age_s=int(env.get("APPLIER_MAX_COMMAND_AGE_S", "900")),
+        env_file=_path("LEADSCOUT_ENV_FILE", REPO_ROOT / ".env"),
     )

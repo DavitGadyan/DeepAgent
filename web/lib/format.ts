@@ -24,6 +24,38 @@ export const formatTime = (iso: string) => TIME.format(new Date(iso));
 export const formatDateTime = (iso: string) => DATE_TIME.format(new Date(iso));
 export const formatDate = (iso: string | null) => (iso ? DATE.format(new Date(iso)) : '—');
 
+const DAY = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const WEEKDAY = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
+
+/** A calendar day 'YYYY-MM-DD' as that day in the viewer's zone (not UTC midnight). */
+const calendarDay = (day: string) => {
+  const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
+  return new Date(year, month - 1, date);
+};
+/** '2026-11-12' -> '12 Nov'. */
+export const formatDay = (day: string) => DAY.format(calendarDay(day));
+/** '2026-11-12' -> 'Thu, 12 Nov'. */
+export const formatWeekday = (day: string) => WEEKDAY.format(calendarDay(day));
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/** How long ago: 'just now', '5 min ago', '3 h ago', '2 d ago'; the date after 30 days. */
+export function formatAgo(iso: string, now: number): string {
+  const age = now - Date.parse(iso);
+  // Also a time slightly in the future, when the two clocks differ.
+  if (age < MINUTE_MS) return 'just now';
+  if (age < HOUR_MS) return `${Math.floor(age / MINUTE_MS)} min ago`;
+  if (age < DAY_MS) return `${Math.floor(age / HOUR_MS)} h ago`;
+  if (age < 30 * DAY_MS) return `${Math.floor(age / DAY_MS)} d ago`;
+  return formatDate(iso);
+}
+
 /** 840 -> '840 ms', 2300 -> '2.3 s', 95000 -> '1m 35s'. */
 export function formatDuration(ms: number | null): string {
   if (ms === null) return '—';
@@ -62,8 +94,9 @@ export function failureNote({ agent, error }: PipelineError): string {
   return `The ${agent} failed on this posting: ${sentence} It is retried on the next run with 'force'.`;
 }
 
-/** 1.249 -> '$1.25'. */
-export const formatUsd = (amount: number) => `$${amount.toFixed(2)}`;
+/** 1.249 -> '$1.25'. A real amount below half a cent is '<$0.01', not '$0.00'. */
+export const formatUsd = (amount: number) =>
+  amount > 0 && amount < 0.005 ? '<$0.01' : `$${amount.toFixed(2)}`;
 
 /** A run's per-source limit; 0 (older runs) meant the value from Setup. */
 export const formatLimitPerSource = (limit: number) =>

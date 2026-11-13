@@ -1,7 +1,9 @@
 /*
  * The pipeline graph. Ported from the portfolio mind map (.mm*, .tg__panel):
  * same card surface, kind colours, stage and side panel; the status ring,
- * counters and event log are new.
+ * counters and event log are new. Then the parts for parallel workers: column
+ * headers, the agent's orbit graph in the side panel (.orbit*), the JSON card (.tj*) and the thread
+ * hover card (.tc*).
  *
  * Not in a cascade layer: React Flow's base.css is unlayered, and layered rules
  * would lose to it whatever their specificity.
@@ -75,34 +77,61 @@
   }
 }
 .mm__stage .react-flow__node {
-  cursor: pointer;
+  cursor: grab;
 }
-.mm__stage .react-flow__node:focus-visible {
+/* A column header is a label: the pointer passes through to the canvas. */
+.mm__stage .react-flow__node-header {
+  pointer-events: none;
+  cursor: default;
+}
+/* The focus ring goes around the whole card, not around the button inside it. */
+.mm__main:focus-visible,
+.tj__head:focus-visible {
   outline: none;
 }
-.mm__stage .react-flow__node:focus-visible .mm__card {
+.mm__card:has(.mm__main:focus-visible),
+.tj:has(.tj__head:focus-visible) {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 .mm__stage .react-flow__edge-path {
-  transition: stroke 0.3s;
+  transition:
+    stroke 0.3s,
+    opacity 0.25s;
+}
+/* Into the applier: nothing passes without the human. */
+.mm__stage .react-flow__edge.mm__edge--gate .react-flow__edge-path {
+  stroke-dasharray: 6 5;
+}
+/* From the end of the pipeline to a row's JSON card: a connector, not a hand-over. */
+.mm__stage .react-flow__edge.mm__edge--json .react-flow__edge-path {
+  stroke-width: 1;
+  stroke-dasharray: 1 5;
+  stroke-linecap: round;
 }
 .mm__stage .react-flow__edge.mm__edge--lit .react-flow__edge-path {
   stroke: var(--mm-c, var(--accent));
   stroke-width: 2.5;
   filter: drop-shadow(0 0 4px var(--mm-c, var(--accent)));
 }
+/* While a thread is highlighted: its own edges stand out, the others step back. */
+.mm__stage .react-flow__edge.mm__edge--path .react-flow__edge-path {
+  stroke: var(--mm-c, var(--accent));
+  stroke-width: 2.5;
+}
+.mm__stage .react-flow__edge.mm__edge--dim .react-flow__edge-path {
+  opacity: 0.25;
+}
 
 /* ---------- Cards ---------- */
+/* The frame. The content sits in .mm__main, a button that fills the card. */
 .mm__card {
   --mm-c: var(--kind-store);
   position: relative;
-  display: grid;
-  align-content: center;
-  gap: 0.35rem;
+  display: flex;
+  flex-direction: column;
   width: 184px;
   min-height: 100px;
-  padding: 0.6rem 0.65rem 0.6rem 0.8rem;
   border-radius: 0.8rem;
   color: var(--fg);
   text-align: left;
@@ -136,10 +165,37 @@
 .mm__card--source {
   width: 208px;
   min-height: 44px;
-  padding-block: 0.35rem;
 }
 .mm__card[data-disabled] {
   opacity: 0.4;
+}
+/* 98px + the frame's two borders = the 100px the layout counts on. */
+.mm__main {
+  display: grid;
+  flex: none;
+  align-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 98px;
+  padding: 0.6rem 0.65rem 0.6rem 0.8rem;
+  border-radius: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mm__card--source .mm__main {
+  min-height: 42px;
+  padding-block: 0.35rem;
+}
+/* While a thread is highlighted: the cards on its path stand out, the others step back. */
+.mm__card[data-dim],
+.tj[data-dim] {
+  opacity: 0.35;
+}
+.mm__card[data-on-path],
+.tj[data-on-path] {
+  border-color: var(--mm-c, var(--accent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mm-c, var(--accent)) 50%, transparent);
 }
 
 /* Status: a pulsing ring while running, a tinted border otherwise. */
@@ -188,13 +244,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.mm__worker {
+  font-weight: 500;
+  color: var(--muted);
+}
 .mm__short {
+  display: block;
   font-size: 0.72rem;
   line-height: 1.3;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.mm__main > .mm__short {
+  padding-right: 1.5rem;
 }
 .mm__card[data-status='running'] .mm__short,
 .mm__card[data-status='waiting'] .mm__short {
@@ -258,6 +322,370 @@
   background: var(--mm-c, var(--fg));
 }
 
+/* ---------- Column header ---------- */
+.mm__colhead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: 26px;
+  padding: 0 0.2rem 0.2rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.mm__colname {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--mm-c);
+}
+.mm__wait {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.mm__colhead[data-busy] .mm__wait {
+  color: var(--warn);
+}
+
+/* ---------- The agent's graph in the side panel (an orbit) ---------- */
+/* Sizes are mirrored in lib/pipeline/orbit.ts. */
+.orbit__box {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+.orbit__thread {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 0.4rem;
+  font-size: 0.74rem;
+  color: var(--body);
+}
+.orbit__thread span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.orbit__thread b {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--mm-c, var(--accent));
+}
+.orbit__thread code,
+.tj__head code,
+.tc__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.94em;
+  color: var(--mm-c, var(--accent));
+}
+.orbit {
+  display: block;
+  width: 100%;
+  max-width: 296px;
+  margin-inline: auto;
+  /* A soft glow behind the agent in the middle. */
+  background: radial-gradient(
+    circle at 50% 46%,
+    color-mix(in srgb, var(--mm-c, var(--accent)) 14%, transparent),
+    transparent 62%
+  );
+  animation: orbitin 0.45s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.orbit__ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 2 5;
+}
+.orbit__spoke {
+  stroke: var(--line-soft);
+}
+.orbit__edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+  transition:
+    stroke 0.2s,
+    opacity 0.2s;
+}
+.orbit__edge[data-conditional] {
+  stroke-dasharray: 4 3;
+}
+.orbit__edge[data-on] {
+  stroke: var(--mm-c, var(--accent));
+}
+.orbit__edge[data-live] {
+  stroke-width: 2;
+}
+.orbit__particle {
+  fill: var(--mm-c, var(--accent));
+}
+.orbit__hub circle {
+  fill: var(--surface);
+  stroke: var(--mm-c, var(--accent));
+  stroke-width: 1.5;
+}
+.orbit__hub text {
+  fill: var(--fg);
+  font-size: 9px;
+  font-weight: 700;
+}
+.orbit__step {
+  cursor: default;
+  transition: opacity 0.2s;
+}
+.orbit__dot {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+  transition:
+    fill 0.2s,
+    stroke 0.2s;
+}
+.orbit__step[data-end] .orbit__dot {
+  fill: var(--inset);
+  stroke-dasharray: 2 2;
+}
+.orbit__label {
+  fill: var(--muted);
+  font-size: 9.5px;
+}
+.orbit__step[data-state='done'] .orbit__dot {
+  fill: color-mix(in srgb, var(--mm-c, var(--accent)) 22%, var(--surface));
+  stroke: var(--mm-c, var(--accent));
+}
+.orbit__step[data-state='active'] .orbit__dot {
+  fill: var(--mm-c, var(--accent));
+  stroke: var(--mm-c, var(--accent));
+}
+.orbit__step[data-state='active'] .orbit__label {
+  fill: var(--fg);
+  font-weight: 700;
+}
+.orbit__step[data-state='failed'] .orbit__dot {
+  fill: color-mix(in srgb, var(--danger) 22%, var(--surface));
+  stroke: var(--danger);
+}
+/* The ring that spreads from the step the thread is in. */
+.orbit__pulse {
+  fill: none;
+  stroke: var(--mm-c, var(--accent));
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: orbitpulse 1.6s ease-out infinite;
+}
+.orbit [data-dim] {
+  opacity: 0.22;
+}
+.orbit__steps {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+}
+.orbit__steps li {
+  display: grid;
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.45rem;
+  border: 1px solid transparent;
+  color: var(--body);
+}
+.orbit__steps li[data-focus] {
+  background: var(--hover);
+}
+.orbit__steps li[data-state='active'] {
+  border-color: var(--mm-c, var(--accent));
+  background: color-mix(in srgb, var(--mm-c, var(--accent)) 10%, transparent);
+  color: var(--fg);
+  font-weight: 600;
+}
+.orbit__n {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.orbit__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.orbit__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.orbit__steps li[data-state='done'] .orbit__state,
+.orbit__steps li[data-state='active'] .orbit__state {
+  color: var(--mm-c, var(--accent));
+}
+.orbit__steps li[data-state='failed'] .orbit__state {
+  color: var(--danger);
+}
+
+/* ---------- JSON card ---------- */
+.tj {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 236px;
+  height: 164px;
+  border-radius: 0.7rem;
+  border: 1px solid var(--line-strong);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  color: var(--fg);
+  overflow: hidden;
+  transition:
+    border-color 0.25s,
+    opacity 0.25s;
+}
+.tj[data-status='running'] {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.tj[data-status='failed'] {
+  border-color: var(--danger);
+}
+.tj__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  height: 26px;
+  padding: 0 0.6rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.tj__head:disabled {
+  cursor: default;
+}
+.tj__head:hover:not(:disabled) {
+  background: var(--hover);
+}
+.tj__head[aria-pressed='true'] {
+  background: var(--accent-tint);
+  color: var(--fg);
+}
+.tj__head code {
+  margin-left: auto;
+}
+.tj__body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.64rem;
+  line-height: 1.5;
+  color: var(--body);
+  cursor: text;
+  user-select: text;
+}
+.tj__line {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 3px;
+  animation: tjflash 1.6s ease-out;
+}
+.tj__key {
+  color: var(--muted);
+}
+.tj__line [data-kind='number'] {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tj__line [data-kind='brace'] {
+  color: var(--faint);
+}
+.tj__empty {
+  margin: auto;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ---------- Thread hover card ---------- */
+/* In <body>, fixed: see components/pipeline/ThreadCard.tsx. Width mirrored in lib/pipeline/placement.ts. */
+.tc {
+  position: fixed;
+  z-index: 60;
+  width: 288px;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--body);
+  box-shadow: 0 20px 40px -16px var(--shadow-color);
+  pointer-events: none;
+}
+.tc__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.tc__id {
+  font-size: 0.72rem;
+}
+.tc__title {
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--fg);
+}
+.tc__company {
+  font-size: 0.78rem;
+  color: var(--soft);
+}
+.tc__where,
+.tc__hint {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.tc__fields {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.76rem;
+}
+.tc__fields > div {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr);
+  column-gap: 0.5rem;
+}
+.tc__fields dt {
+  color: var(--muted);
+}
+.tc__fields dd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.tc__by {
+  flex: none;
+  font-size: 0.64rem;
+  color: var(--faint);
+}
+
 /* ---------- Legend ---------- */
 .mm__legend {
   position: absolute;
@@ -298,15 +726,51 @@
   }
 }
 
+@keyframes orbitpulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+@keyframes orbitin {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@keyframes tjflash {
+  from {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .mm__card[data-status='running']::after {
+  .mm__card[data-status='running']::after,
+  .orbit,
+  .tj__line {
     animation: none;
+  }
+  /* No moving particles and no spreading ring: the filled dot alone marks the step. */
+  .orbit__particle,
+  .orbit__pulse {
+    display: none;
   }
   .mm__stage .react-flow__edge.animated path {
     animation: none;
     stroke-dasharray: none;
   }
   .mm__card,
+  .tj,
+  .orbit__edge,
+  .orbit__step,
+  .orbit__dot,
   .mm__stage .react-flow__edge-path {
     transition: none;
   }

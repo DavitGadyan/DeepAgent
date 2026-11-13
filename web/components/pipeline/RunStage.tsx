@@ -2,7 +2,8 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import type { RunWindow } from '@/lib/pipeline/eventLog';
-import { EMPTY_NODE, reduceAll } from '@/lib/pipeline/reducer';
+import { EMPTY_NODE, reduceAll, waitingCount } from '@/lib/pipeline/reducer';
+import { APPLIER, isStage, parseNodeId, seenWorkers } from '@/lib/pipeline/stages';
 import type { Pipeline } from '@/lib/types';
 import { useNow, useReplay } from '@/lib/useReplay';
 import { useRunEvents } from '@/lib/useRunEvents';
@@ -39,8 +40,18 @@ export function RunStage({
     [log.events, replay.position],
   );
   const now = replay.live ? wallClock + log.clockSkewMs : (state.lastTs ?? 0);
+  // Read from the whole log, not the replayed part: scrubbing must not add or remove rows.
+  // As a string, so the graph is laid out again only when a count changes.
+  const workersKey = useMemo(() => JSON.stringify(seenWorkers(log.events)), [log.events]);
+  const workersSeen = useMemo(() => JSON.parse(workersKey) as Record<string, number>, [workersKey]);
 
-  const selectedNode = pipeline.nodes.find((node) => node.id === selected);
+  // The selected card is an agent, one worker of an agent, or a source.
+  const { agent, worker } = parseNodeId(selected ?? '');
+  const selectedNode = pipeline.nodes.find((node) => node.id === agent);
+  const cardState = state.nodes[selected ?? ''] ?? EMPTY_NODE;
+  // The applier is one worker with a card in every row: its counters and past
+  // events are shown whole, whichever row's card was clicked.
+  const panelState = agent === APPLIER ? (state.nodes[APPLIER] ?? EMPTY_NODE) : cardState;
 
   useEffect(() => {
     if (!selected) return;
@@ -58,11 +69,17 @@ export function RunStage({
           now={now}
           selected={selected}
           onSelect={setSelected}
+          seenWorkers={workersSeen}
         />
-        {selectedNode && (
+        {selected && selectedNode && (
           <NodePanel
             node={selectedNode}
-            state={state.nodes[selectedNode.id] ?? EMPTY_NODE}
+            nodeId={selected}
+            worker={agent === APPLIER ? null : worker}
+            state={panelState}
+            totals={state.nodes[selectedNode.id] ?? EMPTY_NODE}
+            waiting={isStage(selectedNode.id) ? waitingCount(state, selectedNode.id) : null}
+            thread={state.threads[cardState.job]}
             onClose={() => setSelected(null)}
           />
         )}

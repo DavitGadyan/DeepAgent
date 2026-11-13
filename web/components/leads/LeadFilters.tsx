@@ -1,32 +1,29 @@
 import { Search } from 'lucide-react';
+import type { LeadFilterValues } from '@/lib/leadFilters';
 import type { SourceInfo } from '@/lib/sources';
-import { LEAD_STATUSES, type LeadStatus } from '@/lib/types';
+import { LEAD_STATUSES, type LeadSort, type LeadStatus } from '@/lib/types';
 import { leadStatusLabel } from '@/components/ui/badges';
+import { Segmented } from '@/components/ui/Segmented';
+import { DateRangeFilter } from './DateRangeFilter';
 
-export interface LeadFilterValues {
-  minScore: number;
-  status: LeadStatus | '';
-  source: string;
-  remoteOnly: boolean;
-  search: string;
-}
+const SORTS: { value: LeadSort; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'score', label: 'Best score' },
+];
 
-export const NO_FILTERS: LeadFilterValues = {
-  minScore: 0,
-  status: '',
-  source: '',
-  remoteOnly: false,
-  search: '',
-};
-
+/** The filter bar of the Leads page, with the sort switch at its end. */
 export function LeadFilters({
   values,
+  sort,
   sources,
   onChange,
+  onSort,
 }: {
   values: LeadFilterValues;
+  sort: LeadSort;
   sources: SourceInfo[];
   onChange: (values: LeadFilterValues) => void;
+  onSort: (sort: LeadSort) => void;
 }) {
   const set = <K extends keyof LeadFilterValues>(key: K, value: LeadFilterValues[K]) =>
     onChange({ ...values, [key]: value });
@@ -98,6 +95,10 @@ export function LeadFilters({
         />
         Remote only
       </label>
+      <DateRangeFilter values={values} onChange={onChange} />
+      <div className="ml-auto">
+        <Segmented label="Sort leads by" value={sort} options={SORTS} onChange={onSort} />
+      </div>
     </div>
   );
 }

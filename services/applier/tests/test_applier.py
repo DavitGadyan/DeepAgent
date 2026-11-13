@@ -263,3 +263,153 @@ def test_navigation_is_refused_when_no_site_is_configured(
     monkeypatch.delenv("LEADSCOUT_ALLOWED_SITE", raising=False)
 
     assert guard.denial("mcp__applybrowser__browser_navigate", {"url": "https://a.com/"})
+
+
+# --- Claude access ---------------------------------------------------------------
+
+
+def test_login_access_hides_api_keys_from_the_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    from applier_service.claude_cli import session_env
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
+
+    env = session_env(access="login")
+
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    assert session_env(access="console")["ANTHROPIC_API_KEY"] == "sk-ant-test"
+
+
+def test_console_access_without_a_key_fails_before_starting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from applier_service.claude_cli import session_env
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    with pytest.raises(ClaudeError, match="ANTHROPIC_API_KEY"):
+        session_env(access="console")
+
+
+def test_setup_page_choices_reach_the_session() -> None:
+    from leadscout_common.schemas import Settings
+
+    chosen = Settings(claude_access="console", tailor_budget_usd=3, fill_budget_usd=0)
+    settings = applier.with_user_choices(load_settings(), chosen)
+
+    assert (settings.claude_access, settings.tailor_budget_usd, settings.fill_budget_usd) == (
+        "console",
+        3,
+        0,
+    )
+
+
+async def test_sign_in_status_keeps_no_account_details(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = tmp_path / "claude"
+    fake.write_text(
+        "#!/bin/sh\n"
+        'echo \'{"loggedIn": true, "authMethod": "claude.ai", "subscriptionType": "max",'
+        ' "email": "me@example.com", "orgName": "Me"}\'\n'
+    )
+    fake.chmod(0o755)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    status = await applier.sign_in_status(str(fake))
+
+    assert (status.logged_in, status.auth_method, status.subscription) == (True, "claude.ai", "max")
+    assert "example.com" not in status.model_dump_json()
+
+
+def test_the_key_is_read_from_env_file_without_a_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from applier_service.settings import read_api_key
+    from leadscout_common.schemas import Settings
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("OLLAMA_BASE_URL=http://x\n# ANTHROPIC_API_KEY=sk-old\n")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert read_api_key(env_file) == ""  # a commented-out line is not a key
+
+    env_file.write_text('ANTHROPIC_API_KEY="sk-ant-new"  # added later\n')
+    settings = replace(load_settings(), env_file=env_file)
+
+    console = applier.with_user_choices(settings, Settings(claude_access="console"))
+    assert console.api_key == "sk-ant-new"
+    assert "sk-ant" not in repr(console)  # never printed in a log line
+    assert applier.with_user_choices(settings, Settings()).api_key == ""  # login: no key
+
+
+def test_console_session_gets_the_key_read_from_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    from applier_service.claude_cli import session_env
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert (
+        session_env(access="console", api_key="sk-ant-file")["ANTHROPIC_API_KEY"] == "sk-ant-file"
+    )
+    assert "ANTHROPIC_API_KEY" not in session_env(access="login", api_key="sk-ant-file")
+
+
+def test_tailor_model_is_one_model_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+    from applier_service import claude_cli
+    from leadscout_common.schemas import Settings
+    from pydantic import ValidationError
+
+    settings = applier.with_user_choices(load_settings(), Settings(tailor_model="opus"))
+    assert settings.tailor_model == "opus"
+    for bad in ("--dangerously-skip-permissions", "opus --tools Bash", "Opus"):
+        with pytest.raises(ValidationError):
+            Settings(tailor_model=bad)
+    assert Settings(tailor_model="claude-opus-5-5[1m]").tailor_model == "claude-opus-5-5[1m]"
+
+    seen: list[list[str]] = []
+
+    async def fake_run(command, *_args):
+        seen.append(command)
+        return claude_cli.ClaudeResult(text="ok", structured=None)
+
+    monkeypatch.setattr(claude_cli, "_run", fake_run)
+    run = claude_cli.run_claude
+    asyncio.run(run("claude", "p", Path("."), [], 10, "t", "job", model="sonnet"))
+    asyncio.run(run("claude", "p", Path("."), [], 10, "t", "job"))
+
+    assert seen[0][-2:] == ["--model", "sonnet"]
+    assert "--model" not in seen[1]
+
+
+# --- What the Cost page reads ------------------------------------------------------
+
+
+async def test_every_outcome_says_who_paid_and_a_failed_session_keeps_its_cost(
+    bus: Bus, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fails_after_spending(command: ApplyCommand, settings: object) -> dict:
+        raise ClaudeError("no PDF produced", cost_usd=1.25)
+
+    monkeypatch.setattr(applier, "tailor", fails_after_spending)
+    settings = replace(load_settings(), claude_access="console", tailor_model="opus")
+
+    await applier.handle_command(bus, COMMAND, settings)
+
+    failed = (await emitted(bus))[-1]
+    assert failed.type == EventType.ITEM_FAILED
+    assert failed.data == {
+        "action": "tailor",
+        "error": "no PDF produced",
+        "cost_usd": 1.25,
+        "access": "console",
+        "model": "opus",
+    }
+
+
+def test_an_error_result_still_reports_what_the_session_cost() -> None:
+    with pytest.raises(ClaudeError) as caught:
+        parse_result(
+            '{"is_error": true, "result": "budget exceeded", "total_cost_usd": 5.0}', "", 1
+        )
+
+    assert caught.value.cost_usd == 5.0

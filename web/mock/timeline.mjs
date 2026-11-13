@@ -23,7 +23,12 @@ const STAGES = {
     const took = jitter(index, 20, 90);
     return kind === 'drop'
       ? { took, type: 'item.dropped', data: { reason }, forward: false }
-      : { took, type: 'item.finished', data: { forwarded: true }, forward: true };
+      : {
+          took,
+          type: 'item.finished',
+          data: { forwarded: true, job: job.lead.job },
+          forward: true,
+        };
   },
   extractor: (job, index) => {
     const took = jitter(index + 3, 1100, 2600);
@@ -59,12 +64,43 @@ const STAGES = {
 };
 
 /**
+ * The LangGraph nodes a job passes inside each graph agent, in order. The
+ * researcher goes round its model and tools loop twice.
+ */
+const GRAPH_STEPS = {
+  extractor: ['facts', 'highlights', 'tidy'],
+  scorer: ['judge', 'rubric'],
+  researcher: ['model', 'tools', 'model', 'tools', 'model'],
+};
+
+/** Every seventh job at the extractor "was cut off" earlier and continues from its checkpoint. */
+const resumesAt = (agent, index) => (agent === 'extractor' && index % 7 === 3 ? 1 : 0);
+
+/**
+ * `item.progress` events for one job inside a graph agent, spread evenly over
+ * the time the job takes. A resumed job skips the nodes it finished before.
+ */
+function progressEvents(agent, index, job, worker, startedAt, took) {
+  const steps = GRAPH_STEPS[agent] ?? [];
+  const first = resumesAt(agent, index);
+  return steps.slice(first).map((node, position, rest) => ({
+    at: startedAt + (took * position) / rest.length + 30,
+    fields: itemFields(job, {
+      node,
+      worker,
+      ...(first > 0 && position === 0 ? { resumed: true } : {}),
+    }),
+  }));
+}
+
+/**
  * @param jobs     postings the run discovers (from fixtures.mjs)
  * @param sources  names of the enabled sources
  * @param minScore research threshold: lower scores stop after the scorer
+ * @param workers  parallel workers of every pipeline agent
  * @returns `{ at, event }[]` sorted by `at`; events lack id, ts and run_id
  */
-export function buildTimeline(jobs, sources, minScore) {
+export function buildTimeline(jobs, sources, minScore, workers = 1) {
   const entries = [];
   const emit = (at, agent, type, fields = {}) =>
     entries.push({
@@ -104,19 +140,30 @@ export function buildTimeline(jobs, sources, minScore) {
   });
   emit(scoutDone + 80, 'scout', 'scout.done');
 
-  // Every later stage is one worker taking jobs in the order they arrive.
+  // Every later stage is a pool: a job goes to the worker that is free first.
   for (const [agent, work] of Object.entries(STAGES)) {
     const forwarded = [];
-    let freeAt = 0;
+    const freeAt = Array.from({ length: workers }, () => 0);
     arrivals
       .sort((a, b) => a.at - b.at)
       .forEach(({ job, at }, index) => {
-        const startedAt = Math.max(at, freeAt) + 40;
+        const slot = freeAt.indexOf(Math.min(...freeAt));
+        const worker = slot + 1;
+        const startedAt = Math.max(at, freeAt[slot]) + 40;
         const outcome = work(job, index, minScore);
-        freeAt = startedAt + outcome.took;
-        emit(startedAt, agent, 'item.started', itemFields(job));
-        emit(freeAt, agent, outcome.type, itemFields(job, outcome.data, outcome.took));
-        if (outcome.forward) forwarded.push({ job, at: freeAt });
+        const endedAt = startedAt + outcome.took;
+        freeAt[slot] = endedAt;
+        emit(startedAt, agent, 'item.started', itemFields(job, { worker }));
+        for (const step of progressEvents(agent, index, job, worker, startedAt, outcome.took)) {
+          emit(step.at, agent, 'item.progress', step.fields);
+        }
+        emit(
+          endedAt,
+          agent,
+          outcome.type,
+          itemFields(job, { ...outcome.data, worker }, outcome.took),
+        );
+        if (outcome.forward) forwarded.push({ job, at: endedAt });
       });
     arrivals = forwarded;
   }

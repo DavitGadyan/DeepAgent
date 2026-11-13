@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
@@ -18,13 +19,15 @@ from leadscout_common.schemas import (
     Settings,
     Stream,
     new_id,
+    utc_now,
 )
-from leadscout_common.shared_state import load_catalogue, save_settings
+from leadscout_common.shared_state import load_catalogue, load_graphs, save_settings, stop_run
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
 from ..db import EventRow, RunRow
 from ..deps import BroadcasterDep, BusDep, SessionDep
+from ..event_log import LeadChanged
 from ..pipeline import Pipeline, build_pipeline
 from ..projector import EMPTY_STATS
 from ..settings_store import read_settings, write_settings
@@ -46,7 +49,8 @@ class RunOut(BaseModel):
 
 @router.get("/pipeline")
 async def get_pipeline(session: SessionDep, bus: BusDep) -> Pipeline:
-    return build_pipeline(await load_catalogue(bus), await read_settings(session, bus))
+    settings = await read_settings(session, bus)
+    return build_pipeline(await load_catalogue(bus), settings, await load_graphs(bus))
 
 
 @router.get("/settings")
@@ -69,10 +73,15 @@ async def list_runs(session: SessionDep) -> list[RunOut]:
 async def start_run(session: SessionDep, bus: BusDep, options: RunOptions | None = None) -> RunOut:
     """Create a run and tell the scout to start. Agents read the settings mirrored to Redis."""
     settings = await read_settings(session, bus)
-    await save_settings(bus, settings)
-    # Store the limit the run will really use, so the run history shows it.
     options = options or RunOptions()
+    if options.workers and options.workers != settings.workers:
+        # The worker count belongs to the agents, not to one run: it stays until changed.
+        settings = settings.model_copy(update={"workers": options.workers})
+        await write_settings(session, bus, settings)
+    await save_settings(bus, settings)
+    # Store what the run will really use, so the run history shows it.
     options.limit_per_source = options.limit_per_source or settings.limit_per_source
+    options.workers = settings.workers
 
     run = RunRow(id=new_id(), options=options.model_dump(), stats=dict(EMPTY_STATS))
     session.add(run)
@@ -91,6 +100,33 @@ async def get_run(run_id: str, session: SessionDep) -> RunOut:
     return RunOut.model_validate(run)
 
 
+@router.post("/runs/{run_id}/stop")
+async def stop(run_id: str, session: SessionDep, bus: BusDep) -> RunOut:
+    """Stop a run: the scout forwards nothing more, and every agent lets go of the run's
+    jobs, the waiting ones and the ones in progress. Leads already found stay.
+
+    Stopping a run that is not running changes nothing.
+    """
+    run = await session.get(RunRow, run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    if run.status != "running":
+        return RunOut.model_validate(run)
+    await stop_run(bus, run_id)
+    run.status = "stopped"
+    run.finished_at = utc_now()
+    await session.commit()
+    await bus.emit(
+        Event(
+            run_id=run_id,
+            agent=Agent.ORCHESTRATOR,
+            type=EventType.RUN_FINISHED,
+            data={"stopped": True},
+        )
+    )
+    return RunOut.model_validate(run)
+
+
 @router.get("/runs/{run_id}/events")
 async def run_events(run_id: str, session: SessionDep) -> list[Event]:
     rows = await session.scalars(
@@ -101,15 +137,19 @@ async def run_events(run_id: str, session: SessionDep) -> list[Event]:
 
 @router.get("/events/stream")
 async def event_stream(request: Request, broadcaster: BroadcasterDep) -> StreamingResponse:
-    """Server-Sent Events: every event of every run, as it is recorded."""
+    """Server-Sent Events: every event as it is recorded (unnamed messages), and every
+    lead row as it changes (messages named `lead`)."""
 
     async def frames() -> AsyncIterator[str]:
         queue = broadcaster.subscribe()
         try:
             while not await request.is_disconnected():
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_S)
-                    yield f"data: {event.model_dump_json()}\n\n"
+                    pushed = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_S)
+                    if isinstance(pushed, LeadChanged):
+                        yield f"event: lead\ndata: {json.dumps(pushed.lead)}\n\n"
+                    else:
+                        yield f"data: {pushed.model_dump_json()}\n\n"
                 except TimeoutError:
                     yield ": keepalive\n\n"
         finally:

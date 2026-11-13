@@ -39,24 +39,29 @@ to review and submit.
    `polishmycv` skill and fills the application form in a browser. It stops before
    Submit; you press it.
 
+Each agent handles several jobs at the same time (you choose the number of workers), and
+the three model agents save a checkpoint after every step, so a job that is cut off
+continues where it stopped.
+
 The web UI shows the pipeline as a live node graph, with a time slider that replays any
 run to any moment. It has light and dark themes (the toggle is at the bottom of the nav
 rail; the default follows your system).
 
 ## Quick start
 
-You need Docker, [uv](https://docs.astral.sh/uv/), Node 22 with pnpm, and an Ollama you
-can reach (on this machine or on a GPU box).
+You need Docker, [uv](https://docs.astral.sh/uv/), Node 22 with pnpm, and a model server
+you can reach: Ollama, or vLLM (see [Models and hardware](#models-and-hardware)).
 
 ```bash
-make setup                 # .env, data/profile/profile.yaml, git hook, dependencies
+make setup                 # .env, data/profile/profile.yaml, dependencies
 $EDITOR .env               # set OLLAMA_BASE_URL and POLISHMYCV_HOME
-$EDITOR data/profile/profile.yaml   # your preferences and application details
 make models                # pulls qwen3:14b and bge-m3 (see "Models and hardware")
 make up                    # builds and starts every container
 ```
 
-Open <http://localhost:3000> and press **Start run**.
+Open <http://localhost:3000/setup>, fill in **Your profile** (preferences for scoring,
+answers for application forms) and choose the **Claude Code access**. Then press
+**Start run** on the Pipeline page.
 
 To use the Apply buttons, also run the applier on this machine (it needs the Claude Code
 CLI, Chrome, and the polishmycv repo):
@@ -68,15 +73,20 @@ make applier-selftest      # once: checks the form-filling agent on a local dumm
 
 No GPU on this machine? See [Models and hardware](#models-and-hardware).
 
+Moving to the Ubuntu GPU machine, with the data? Follow
+[docs/install-ubuntu.md](docs/install-ubuntu.md). If ports 3000, 8000 or 6379 are in use,
+set `WEB_PORT`, `API_PORT` or `REDIS_PORT` in `.env`.
+
 ## Using it
 
 | Page | What you do there |
 |---|---|
-| **Pipeline** | Start a run and watch it. Click a node for its model, counters and recent events. Drag the slider to see the pipeline as it was at any moment; **Live** returns to now. |
-| **Leads** | Ranked table of jobs. Filter by score, status, source, remote, or text. |
+| **Pipeline** | Start a run, with the number of **workers** (rows), watch it, and **Stop** it. Each row is a whole pipeline: Filter, Extractor, Scorer, Researcher, Applier, and the job as JSON. The scout deals the jobs to the rows in turn; a job never leaves its row. Hover a node for the job (thread) it holds. Click it for the side panel: the agent's own graph drawn as an orbit, with the step the job is in, then its counters and past events. The card at the end of a row shows the job as JSON, growing as agents add to it. Drag the slider to see the pipeline as it was at any moment; **Live** returns to now. |
+| **Leads** | Jobs, newest first (or best score first). Filter by found date (last 24 hours, 3 days, 7 days, or a date range), score, status, source, remote, or text. New and changed leads appear at once, without a reload. |
 | **Lead** | Key facts at a glance, the score with its four-part breakdown, the role as short bullets, the company brief, and the **Application** panel. The full posting is one click away. A step that failed for this job says so. |
 | **Runs** | History of runs with their counts. Click one to replay it. |
-| **Setup** | Turn sources on and off, edit target and excluded phrases, set the research threshold and the per-source limit. |
+| **Cost** | What the Claude Code sessions cost per day, action, model and lead; the monthly budget and the cap per session; a link to the Console for your credit balance. |
+| **Setup** | Turn sources on and off, edit target and excluded phrases, set the research threshold, the per-source limit and the workers per agent; your profile; Claude Code access and model. |
 
 ## Architecture
 
@@ -84,20 +94,26 @@ One container per agent. Agents never call each other: each reads one Redis Stre
 writes the next, and reports every step as an event. The orchestrator stores the events
 and derives leads, run statistics and the live graph from them.
 
+The pipeline has N rows (the worker count). Inside its container, each agent has one
+worker per row. The scout deals the jobs of a run to the rows in turn, and a job is handled
+by the worker of its row in every agent, so rows never exchange jobs. Inside a row the
+agents work at the same time, each on its own job. The extractor, scorer and researcher
+are LangGraph graphs with checkpoints in Postgres, one thread per job.
+
 ```
             ┌──────────── web (Next.js) ────────────┐
-            │  Pipeline graph · Leads · Runs · Setup │
+            │ Pipeline graph · Leads · Runs · Cost · Setup │
             └───────────────┬───────────────────────┘
                      REST + Server-Sent Events
                     ┌───────▼────────┐
-                    │  orchestrator  │── Postgres (events, leads, runs, settings)
-                    └───────┬────────┘
+                    │  orchestrator  │── Postgres (events, leads, runs, settings;
+                    └───────┬────────┘            LangGraph checkpoints of the agents)
                        Redis Streams
    ┌──────────┬───────────┼────────────┬──────────────┐
  scout ──► filter ──► extractor ──► scorer ──► researcher        applier (host)
 (no model) (embeddings)  (LLM)       (LLM)   (deep agent         (Claude Code +
                                               + SearXNG)          Chrome, on approval)
-                    └──── Ollama (your GPU box) ────┘
+                    └── Ollama or vLLM (your GPU box) ──┘
 ```
 
 Details, the stream table and the design decisions are in
@@ -161,6 +177,50 @@ make models                                  # pulls into the container
 Every port is bound to the box's localhost. From your laptop, open a tunnel and use
 <http://localhost:3000> as usual: `ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <box>`.
 
+**vLLM instead of Ollama** (Ubuntu with an NVIDIA GPU). vLLM serves the OpenAI API, and
+LeadScout talks to any server that does. vLLM's default port 8000 is the LeadScout API's,
+so use another one. It serves one model per process, so the embedding model gets its own
+small process (or stays on Ollama with `EMBED_PROVIDER=ollama`):
+
+```bash
+# Chat model. The tool flags are what the researcher's tool calls need.
+vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001 --max-model-len 16384 \
+  --gpu-memory-utilization 0.75 --enable-auto-tool-choice --tool-call-parser hermes
+# Embeddings for the filter.
+vllm serve BAAI/bge-m3 --port 8002 --gpu-memory-utilization 0.12
+```
+
+In `.env` (then `make up`; `make models` is for Ollama only):
+
+```bash
+LLM_PROVIDER=openai
+LLM_BASE_URL=http://host.docker.internal:8001/v1
+LEADSCOUT_MODEL=Qwen/Qwen2.5-7B-Instruct
+LEADSCOUT_NUM_CTX=16384          # not larger than --max-model-len
+EMBED_BASE_URL=http://host.docker.internal:8002/v1
+FILTER_MODEL=BAAI/bge-m3
+```
+
+`host.docker.internal` reaches a vLLM on the same machine; start vLLM with
+`--host 0.0.0.0` for that, and with `--api-key <key>` plus `LLM_API_KEY=<key>` if the
+machine is on a network you do not trust. The OpenAI-compatible code path was tested
+against Ollama's `/v1` endpoint; vLLM itself and a GPU were not available for testing,
+so check the two commands above against your vLLM version.
+
+**Workers.** The number next to **Start run** (or on Setup) is the number of rows: how
+many jobs each agent handles at the same time. vLLM batches parallel requests, so more
+rows give more throughput until the GPU is full. Ollama handles `OLLAMA_NUM_PARALLEL`
+requests at once (set it on the Ollama server); rows beyond that only wait. On a machine
+without a GPU keep one row: parallel model calls on a CPU only slow each other down
+until they time out.
+
+**The "waiting" number.** A column header shows how many jobs wait in front of that
+agent. It is not a block between agents: a job that an agent finished goes to the next
+agent of its row at once. It is the speed of the model. Each row takes one job per agent
+at a time, and a model call takes seconds on a GPU and minutes on a CPU, so a run that
+finds hundreds of jobs queues them in front of the first model agent. To make the queue
+shorter: more rows on a GPU, a lower limit per source, or narrower keywords on Setup.
+
 **Without a GPU** (development; this is how it was tested). In `.env`:
 
 ```bash
@@ -201,13 +261,23 @@ sessions run with Claude Code's restricted mode and an exact tool list:
 | Tailor CV | read the polishmycv repo and skill; write only this lead's folder; run the skill's own scripts and the poppler tools | run other commands or code, read other files, see your `.env` |
 | Fill form | the listed browser tools in its own tab; open pages on the posting's site; follow links by clicking; upload only this lead's files | read or write files, run commands, press keys, submit (a guard hook refuses submit-like clicks, Enter, uploads from elsewhere and non-web addresses) |
 
-Each session has a time and a spending cap (`APPLIER_*_TIMEOUT_S`, `APPLIER_*_BUDGET_USD`
-in `.env`). A button press that waited more than 15 minutes for the applier is not acted
+Each session has a time cap (`APPLIER_*_TIMEOUT_S` in `.env`) and a spending cap (Setup
+page). A button press that waited more than 15 minutes for the applier is not acted
 on, and a lead whose action was interrupted (the applier was stopped) is reported as such.
 If a lead still looks stuck, its page offers **Reset**.
 
-This step uses Claude through your Claude Code login, not a local model, and only for
-jobs you approve.
+This step uses Claude, not a local model, and only for jobs you approve. The switch on the
+Setup page chooses how it signs in:
+
+| Claude Code access | Signs in with | Billed to |
+|---|---|---|
+| Claude login (default) | the account from `claude auth login`; an `ANTHROPIC_API_KEY` in `.env` is removed from the session | your Claude plan's usage |
+| Console API key | `ANTHROPIC_API_KEY` in `.env`, read for every command (no restart) | your Anthropic Console account, per token |
+
+While `make applier` runs, the Setup page shows whether the chosen access works. The
+Setup page also picks the **Tailor CV model**: Claude Code's default, an alias (`opus`,
+`sonnet`, `haiku`, `fable`, each the latest of its family) or a full model name. It is
+recorded per session in Langfuse.
 
 ## Tracing and costs (Langfuse)
 
@@ -246,14 +316,23 @@ not next to Ollama on a 16 GB laptop. It is deliberately not bundled into this c
 
 | File | What it holds | When a change applies |
 |---|---|---|
-| `.env` | Ollama address, model overrides, path to the polishmycv repo, Langfuse keys, applier caps | `make up`; restart `make applier` |
+| `.env` | Model server (Ollama or vLLM) address, model overrides, path to the polishmycv repo, Langfuse keys, `ANTHROPIC_API_KEY` | `make up`; restart `make applier` (except `ANTHROPIC_API_KEY`: next command) |
 | `config/agents.toml` | Model, context size, timeout and thresholds per agent | `docker compose restart <agent>` |
 | `config/roles.yaml` | First-start target phrases, excluded phrases, non-target roles, role points for scoring | next job (target and excluded phrases: the Setup page wins) |
 | `config/sources.yaml` | Company slugs and per-source settings; which sources start enabled | next run |
-| `data/profile/profile.yaml` | Your preferences (for scoring) and application details (for forms). Git-ignored | scorer: `docker compose restart scorer`; forms: next fill |
+| `data/profile/profile.yaml` | Your preferences (for scoring) and application details (for forms), edited on the Setup page or by hand. Git-ignored | next job |
 
 The `config/` folder is mounted into the containers read-only. Settings changed on the
-Setup page are stored in the database and win over `roles.yaml`.
+Setup page (sources, keywords, thresholds, Claude access, spending caps) are stored in the
+database and win over `roles.yaml`. The profile is saved to `profile.yaml` itself.
+
+**Backup, and a move to another machine.** `make backup` saves the database, the queues
+and your profile to one archive in `backups/` (stop the agents first); `make restore
+FILE=<archive>` loads it, also into a new install, and a run in progress continues there.
+`make prior-applications FILE=<json>` imports applications you made outside LeadScout: a
+lead for the same job takes the status (applied, in review, interview, rejected, skipped)
+and the documents that were sent. The steps for the Ubuntu machine are in
+[docs/install-ubuntu.md](docs/install-ubuntu.md).
 
 ## Repository layout
 
@@ -274,7 +353,6 @@ docker/                 service.Dockerfile, SearXNG settings
 docs/                   architecture, agents, sources, api
 tests/                  repository-level tests (the push guard)
 .claude/                project settings and hooks, the job-applier subagent
-.githooks/              pre-push hook
 ```
 
 ## Development
@@ -348,15 +426,12 @@ example and the deepagents docs)
 
 ## Claude Code setup in this repo
 
-- **Pushing is blocked, four ways.** `.claude/settings.json` denies `git push` and the
-  `gh` commands that publish (`pr create`, `repo create`, `repo sync`, `release create`);
-  a `PreToolUse` hook (`.claude/hooks/block_push.py`) parses every shell command Claude
-  runs and refuses those, also inside `sh -c`, `sudo` or `git -C`, while allowing
-  look-alikes such as `git stash push`; the git `pre-push` hook (`.githooks/pre-push`,
-  enabled by `make setup`) stops manual pushes; and the remote's push URL is set to
-  `no-push://disabled-by-leadscout`. To push on purpose:
-  `git remote set-url --push origin <url>`, `git config --unset core.hooksPath`, and
-  remove the hook entry from `.claude/settings.json`.
+- **Claude Code cannot push; you can.** `.claude/settings.json` denies `git push` and
+  the `gh` commands that publish (`pr create`, `repo create`, `repo sync`,
+  `release create`), and a `PreToolUse` hook (`.claude/hooks/block_push.py`) parses
+  every shell command Claude runs and refuses those, also inside `sh -c`, `sudo` or
+  `git -C`, while allowing look-alikes such as `git stash push`. Both apply only to
+  Claude Code sessions in this project; `git push` in your own terminal works as usual.
 - **Concise replies.** The `concise` plugin (`o4f6bgpac3/concise`) is enabled for this
   project; `/concise` turns it on in a session.
 - **`job-applier` subagent** in `.claude/agents/`, used by the applier service.
@@ -379,7 +454,8 @@ example and the deepagents docs)
 
 ## Known limits
 
-- No login on the UI or API; ports are bound to `127.0.0.1`. Do not expose them.
+- No login on the UI or API. Ports are bound to `127.0.0.1` by default; `BIND_ADDRESS=0.0.0.0`
+  opens the UI and API to your network (see `.env.example`). Never expose them to the internet.
 - No migration tool; missing tables and the columns added since the first version are
   created at start-up.
 - A run whose queued messages were lost (for example Redis data deleted) stays "running".

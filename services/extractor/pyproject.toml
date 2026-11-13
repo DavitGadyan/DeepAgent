@@ -3,7 +3,7 @@ name = "extractor-service"
 version = "0.1.0"
 description = "LeadScout extractor agent."
 requires-python = ">=3.12"
-dependencies = ["leadscout-common[llm]"]
+dependencies = ["leadscout-common[llm,graphs]"]
 
 [tool.uv.sources]
 leadscout-common = { workspace = true }

@@ -1,4 +1,6 @@
 import type {
+  ApplierStatus,
+  CostReport,
   EventQuery,
   Lead,
   LeadPage,
@@ -8,6 +10,7 @@ import type {
   Run,
   RunOptions,
   Settings,
+  UserProfile,
 } from './types';
 
 /** Baked in at build time; see `.env.example`. */
@@ -71,6 +74,9 @@ function leadQueryString(query: LeadQuery): string {
   if (query.source) params.set('source', query.source);
   if (query.remote) params.set('remote', 'true');
   if (query.q) params.set('q', query.q);
+  if (query.found_after) params.set('found_after', query.found_after);
+  if (query.found_before) params.set('found_before', query.found_before);
+  if (query.sort) params.set('sort', query.sort);
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.offset) params.set('offset', String(query.offset));
   const text = params.toString();
@@ -84,6 +90,8 @@ export const api = {
 
   runs: () => request<Run[]>('/api/runs'),
   startRun: (options: Partial<RunOptions>) => request<Run>('/api/runs', 'POST', options),
+  /** Lets go of the run's waiting and unfinished jobs; leads already found stay. */
+  stopRun: (runId: string) => request<Run>(`/api/runs/${encodeURIComponent(runId)}/stop`, 'POST'),
   runEvents: (runId: string) =>
     request<PipelineEvent[]>(`/api/runs/${encodeURIComponent(runId)}/events`),
   /** Oldest first. */
@@ -103,6 +111,20 @@ export const api = {
 
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (settings: Settings) => request<Settings>('/api/settings', 'PUT', settings),
+
+  profile: () => request<UserProfile>('/api/profile'),
+  saveProfile: (profile: UserProfile) => request<UserProfile>('/api/profile', 'PUT', profile),
+  /** null when the applier worker (`make applier`) is not running. */
+  applierStatus: () => request<ApplierStatus | null>('/api/applier'),
+
+  /** Spend for the last `days` days, in the viewer's own days. */
+  costs: (days: number) => {
+    const params = new URLSearchParams({
+      days: String(days),
+      tz_offset_minutes: String(-new Date().getTimezoneOffset()),
+    });
+    return request<CostReport>(`/api/costs?${params}`);
+  },
 };
 
 export const eventStreamUrl = `${API_URL}/api/events/stream`;

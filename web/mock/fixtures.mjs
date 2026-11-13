@@ -3,7 +3,7 @@
  * job postings, expanded into full `Lead` objects shaped like docs/api.md.
  */
 import { createHash } from 'node:crypto';
-import { AGENTS, LEAD_SEEDS, RUN_SEEDS, SOURCES } from './seeds.mjs';
+import { AGENTS, GRAPHS, LEAD_SEEDS, RUN_SEEDS, SOURCES, STEPS } from './seeds.mjs';
 
 export const pipeline = {
   nodes: [
@@ -15,6 +15,9 @@ export const pipeline = {
       model: '',
       parent: 'scout',
       enabled,
+      workers: 1,
+      graph: null,
+      steps: [],
     })),
     ...AGENTS.map(([id, label, kind, model, description]) => ({
       id,
@@ -23,6 +26,10 @@ export const pipeline = {
       description,
       model,
       enabled: true,
+      // The server replaces this with the count from the settings.
+      workers: 1,
+      graph: GRAPHS[id] ?? null,
+      steps: STEPS[id] ?? [],
     })),
   ],
   edges: [
@@ -37,6 +44,7 @@ export const settings = {
   exclude_keywords: ['sales', 'intern', 'recruiter'],
   research_min_score: 70,
   limit_per_source: 50,
+  workers: 2,
 };
 
 const SKILLS = [

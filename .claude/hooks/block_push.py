@@ -12,9 +12,9 @@ Not blocked: commands that only mention the words, such as `git stash push`,
 `git log --grep push`, `git commit -m "fix the push hook"`, or a here-document that
 writes a file containing them.
 
-This is one of four layers (see README, "Claude Code setup in this repo"). The git
-pre-push hook and the disabled push URL also stop pushes this parser cannot see, such
-as a git alias or a script.
+It applies only to Claude Code; the user pushes by hand from their own terminal. The
+`permissions.deny` rules in `.claude/settings.json` are the second layer (see README,
+"Claude Code setup in this repo").
 """
 
 from __future__ import annotations

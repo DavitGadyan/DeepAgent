@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TypeVar
 
 import redis.asyncio as redis
@@ -20,6 +20,7 @@ PAYLOAD_FIELD = "json"
 EVENTS_MAXLEN = 100_000
 SOCKET_TIMEOUT_S = 30
 RECONNECT_DELAY_S = 2
+WRITE_ATTEMPTS = 5
 
 
 class Bus:
@@ -32,16 +33,34 @@ class Bus:
         )
 
     async def publish(self, stream: Stream, message: BaseModel) -> None:
-        await self.redis.xadd(stream.value, {PAYLOAD_FIELD: message.model_dump_json()})
+        payload = {PAYLOAD_FIELD: message.model_dump_json()}
+        await self._patiently(lambda: self.redis.xadd(stream.value, payload))
 
     async def emit(self, event: Event) -> None:
         """Record an event. The orchestrator stores it and relays it to the UI."""
-        await self.redis.xadd(
-            Stream.EVENTS.value,
-            {PAYLOAD_FIELD: event.model_dump_json()},
-            maxlen=EVENTS_MAXLEN,
-            approximate=True,
+        payload = {PAYLOAD_FIELD: event.model_dump_json()}
+        await self._patiently(
+            lambda: self.redis.xadd(
+                Stream.EVENTS.value, payload, maxlen=EVENTS_MAXLEN, approximate=True
+            )
         )
+
+    async def _patiently[T](self, write: Callable[[], Awaitable[T]]) -> T:
+        """Run one Redis write, trying again when Redis cannot be reached for a moment.
+
+        With several workers in one agent, one failed write would otherwise stop them
+        all. A write that was sent twice is harmless: events carry a unique id, and job
+        consumers are idempotent.
+        """
+        for attempt in range(1, WRITE_ATTEMPTS + 1):
+            try:
+                return await write()
+            except (redis.ConnectionError, redis.TimeoutError) as error:
+                if attempt == WRITE_ATTEMPTS:
+                    raise
+                log.warning("Redis unavailable (%s); trying the write again", error)
+                await asyncio.sleep(RECONNECT_DELAY_S)
+        raise AssertionError("unreachable")
 
     async def consume(
         self, stream: Stream, group: str, model: type[M], consumer: str = "c1", block_ms: int = 5000
@@ -67,6 +86,11 @@ class Bus:
                 cursor = ">"
                 continue
             for message_id, fields in entries:
+                if cursor != ">":
+                    # Still draining what a crash left behind: move past this entry. The
+                    # caller may hand it to a worker and ask for the next one before it is
+                    # acknowledged, and must not get the same job twice.
+                    cursor = message_id
                 try:
                     yield message_id, model.model_validate_json(fields[PAYLOAD_FIELD])
                 except (ValueError, KeyError):  # invalid JSON, or an entry with no payload
@@ -74,7 +98,7 @@ class Bus:
                     await self.ack(stream, group, message_id)
 
     async def ack(self, stream: Stream, group: str, message_id: str) -> None:
-        await self.redis.xack(stream.value, group, message_id)
+        await self._patiently(lambda: self.redis.xack(stream.value, group, message_id))
 
     async def _ensure_group(self, stream: Stream, group: str) -> None:
         try:

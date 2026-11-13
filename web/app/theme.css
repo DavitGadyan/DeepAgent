@@ -54,6 +54,14 @@
   --kind-human: #c2410c;
   --kind-store: #56606b;
 
+  /*
+   * Chart series (Cost: 1 = Console API key, 2 = Claude login). Kept apart from
+   * the state colours above, and checked per theme against --surface for
+   * colour-blind separation and 3:1 contrast.
+   */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+
   /* Pipeline graph */
   --stage-bg: radial-gradient(ellipse at 50% 50%, #ffffff, #eceef2 75%);
   --dot: rgba(17, 18, 20, 0.16);
@@ -102,6 +110,9 @@
   --kind-deep: #c084fc;
   --kind-human: #ff9f43;
   --kind-store: #cfd3d8;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
 
   --stage-bg: radial-gradient(ellipse at 50% 50%, #26272a, #141416 70%);
   --dot: rgba(255, 255, 255, 0.14);

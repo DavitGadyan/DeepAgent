@@ -65,6 +65,10 @@ REPORT_SCHEMA: dict[str, Any] = {
 class NeedsHuman(Exception):
     """The agent stopped because only the user can continue (login, CAPTCHA…)."""
 
+    def __init__(self, reason: str, cost_usd: float | None = None) -> None:
+        super().__init__(reason)
+        self.cost_usd = cost_usd
+
 
 def pick_documents(folder: Path) -> tuple[Path, Path | None]:
     """The tailored CV and, if there is one, the cover letter PDF."""
@@ -163,6 +167,8 @@ async def fill_form(command: ApplyCommand, settings: ApplierSettings) -> dict[st
         trace_name="applier.fill_form",
         job_id=command.job_id,
         max_budget_usd=settings.fill_budget_usd,
+        access=settings.claude_access,
+        api_key=settings.api_key,
         extra_args=[
             "--restricted",
             "--tools", "",
@@ -178,9 +184,10 @@ async def fill_form(command: ApplyCommand, settings: ApplierSettings) -> dict[st
     report = result.structured or {}
     if report.get("outcome") == "needs_human":
         reason = report.get("needs_human_reason") or "The page needs you before it can be filled"
-        raise NeedsHuman(reason)
+        raise NeedsHuman(reason, cost_usd=result.cost_usd)
     if report.get("outcome") != "filled":
-        raise ClaudeError(result.text[:300] or "The agent found no application form on the page")
+        reason = result.text[:300] or "The agent found no application form on the page"
+        raise ClaudeError(reason, cost_usd=result.cost_usd)
 
     files = sorted(p.name for p in folder.iterdir() if p.suffix.lower() in SHOWN_EXTENSIONS)
     return {

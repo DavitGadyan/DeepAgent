@@ -12,6 +12,9 @@ const LEAD_TONE: Record<LeadStatus, Tone> = {
   filling: 'busy',
   form_filled: 'warn',
   applied: 'good',
+  in_review: 'busy',
+  interview: 'good',
+  rejected: 'bad',
   skipped: 'neutral',
   failed: 'bad',
 };
@@ -27,9 +30,15 @@ export function LeadStatusPill({ status }: { status: LeadStatus }) {
   );
 }
 
+const RUN_TONE: Record<Run['status'], string> = {
+  running: 'busy',
+  finished: 'good',
+  stopped: 'warn',
+};
+
 export function RunStatusPill({ status }: { status: Run['status'] }) {
   return (
-    <span className="pill" data-tone={status === 'running' ? 'busy' : 'good'}>
+    <span className="pill" data-tone={RUN_TONE[status]}>
       {humanize(status)}
     </span>
   );

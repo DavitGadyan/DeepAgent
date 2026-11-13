@@ -9,10 +9,9 @@ LOAD_ENV := set -a && . ./.env && set +a
 help: ## Show this list
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
-setup: ## First-time setup: .env, profile file, git hook, Python and web dependencies
+setup: ## First-time setup: .env, profile file, Python and web dependencies
 	@test -f .env || cp .env.example .env
 	@test -f data/profile/profile.yaml || cp data/profile/profile.example.yaml data/profile/profile.yaml
-	git config core.hooksPath .githooks
 	uv sync --all-packages --all-extras
 	cd web && pnpm install
 
@@ -27,10 +26,20 @@ logs: ## Follow the logs of all agents
 	$(COMPOSE) logs -f --tail=50
 
 applier: ## Run the applier worker on this machine (needs Claude Code and Chrome)
-	$(LOAD_ENV) && REDIS_URL=redis://localhost:6379/0 uv run python -m applier_service.main
+	$(LOAD_ENV) && REDIS_URL=redis://localhost:$${REDIS_PORT:-6379}/0 uv run python -m applier_service.main
 
 applier-selftest: ## Check the form-filling agent on a local dummy form (uses Claude Code)
 	$(LOAD_ENV) && uv run python -m applier_service.selftest
+
+backup: ## Save the database, the queues and your profile to backups/ (stop the agents first)
+	scripts/backup.sh
+
+restore: ## Load a backup: make restore FILE=backups/<name>.tar.gz (replaces the current data)
+	scripts/restore.sh "$(FILE)"
+
+prior-applications: ## Import applications made outside LeadScout: make prior-applications FILE=<json>
+	$(LOAD_ENV) && curl -fsS -X POST "$$NEXT_PUBLIC_API_URL/api/prior-applications" \
+	  -H 'content-type: application/json' --data-binary @"$(FILE)" && echo
 
 models: ## Pull the models into the bundled Ollama container if it runs, else the local Ollama
 	@if $(COMPOSE) ps -q ollama 2>/dev/null | grep -q .; then \
@@ -54,4 +63,4 @@ lint: ## Lint and format checks
 	uv run ruff check . && uv run ruff format --check .
 	cd web && pnpm lint && pnpm typecheck
 
-.PHONY: help setup up down logs applier applier-selftest models test evals lint
+.PHONY: help setup up down logs applier applier-selftest backup restore prior-applications models test evals lint

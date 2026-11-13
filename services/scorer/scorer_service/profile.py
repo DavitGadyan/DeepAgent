@@ -45,18 +45,51 @@ class CandidateProfile:
         return "\n\n".join(sections)
 
 
-def load_profile() -> CandidateProfile:
-    """Read the CV (`PROFILE_CV_PATH`), the optional portfolio catalogue
-    (`PROFILE_CATALOGUE_PATH`) and the user's profile file (`PROFILE_PREFS_PATH`).
+def profile_paths() -> tuple[Path, Path, Path]:
+    """CV (`PROFILE_CV_PATH`), portfolio catalogue (`PROFILE_CATALOGUE_PATH`, optional) and
+    the user's profile file (`PROFILE_PREFS_PATH`). All are mounted read-only."""
+    return (
+        Path(os.environ.get("PROFILE_CV_PATH", "data/profile/cv.txt")),
+        Path(os.environ.get("PROFILE_CATALOGUE_PATH", "")),
+        Path(os.environ.get("PROFILE_PREFS_PATH", "data/profile/profile.yaml")),
+    )
 
-    All are mounted read-only into the container. A missing CV is a configuration error
-    and stops the service: scoring against nothing would produce confident nonsense.
+
+class ProfileSource:
+    """The current profile, read again when one of its files changed.
+
+    The Setup page saves `profile.yaml`; the next job is scored with the new preferences.
     """
-    cv_path = Path(os.environ.get("PROFILE_CV_PATH", "data/profile/cv.txt"))
+
+    def __init__(self) -> None:
+        self._stamp: tuple[int, ...] | None = None
+        self._profile: CandidateProfile | None = None
+
+    def current(self) -> CandidateProfile:
+        stamp = tuple(_modified_ns(path) for path in profile_paths())
+        if self._profile is None or stamp != self._stamp:
+            self._profile, self._stamp = load_profile(), stamp
+        return self._profile
+
+
+def _modified_ns(path: Path) -> int:
+    try:
+        return path.stat().st_mtime_ns if path.is_file() else 0
+    except OSError:
+        return 0
+
+
+def load_profile() -> CandidateProfile:
+    """Read the CV, the portfolio catalogue and the profile file (see `profile_paths`).
+
+    A missing CV is a configuration error and stops the service: scoring against nothing
+    would produce confident nonsense.
+    """
+    cv_path, catalogue_path, prefs_path = profile_paths()
     if not cv_path.is_file():
         raise FileNotFoundError(f"CV not found at {cv_path}; set PROFILE_CV_PATH")
-    catalogue = _read_json(Path(os.environ.get("PROFILE_CATALOGUE_PATH", "")))
-    profile = _read_yaml(Path(os.environ.get("PROFILE_PREFS_PATH", "data/profile/profile.yaml")))
+    catalogue = _read_json(catalogue_path)
+    profile = _read_yaml(prefs_path)
 
     stated = {key: value for key, value in (profile.get("preferences") or {}).items() if value}
     return CandidateProfile(

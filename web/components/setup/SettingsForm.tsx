@@ -6,6 +6,8 @@ import { type SourceInfo, sourceLabel } from '@/lib/sources';
 import type { Settings } from '@/lib/types';
 import { InlineError } from '@/components/ui/States';
 import { ChipEditor } from './ChipEditor';
+import { ClaudeAccessCard } from './ClaudeAccessCard';
+import { WorkersCard } from './WorkersCard';
 
 /**
  * Editable copy of the settings. Nothing is sent until Save; `onSaved` hands
@@ -115,6 +117,10 @@ export function SettingsForm({
           </span>
         </label>
       </section>
+
+      <WorkersCard value={draft} onChange={set} />
+
+      <ClaudeAccessCard value={draft} onChange={set} />
 
       <div className="flex items-center gap-3">
         <button type="submit" className="btn btn--primary" disabled={!dirty || saving}>

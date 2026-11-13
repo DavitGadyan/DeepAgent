@@ -1,5 +1,5 @@
 'use client';
-import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
+import { Handle, type NodeProps, Position } from '@xyflow/react';
 import {
   Bot,
   Check,
@@ -10,23 +10,23 @@ import {
   LoaderCircle,
   Rss,
   Sparkles,
+  type LucideIcon,
   UserRound,
   Wrench,
-  type LucideIcon,
 } from 'lucide-react';
-import { createContext, useContext } from 'react';
 import { formatDuration } from '@/lib/format';
-import { EMPTY_NODE, type NodeState, type NodeStatus } from '@/lib/pipeline/reducer';
+import { EMPTY_NODE, type NodeState, type NodeStatus, waitingCount } from '@/lib/pipeline/reducer';
+import { holdsThread, isStage } from '@/lib/pipeline/stages';
 import type { NodeKind, PipelineNode } from '@/lib/types';
-
-export type AgentNode = Node<{ node: PipelineNode }, 'agent'>;
-export type SourceNode = Node<{ node: PipelineNode }, 'source'>;
-export type FlowNode = AgentNode | SourceNode;
-
-/** Live state of every node, keyed by node id; the cards read their own entry. */
-export const PipelineCtx = createContext<Record<string, NodeState>>({});
-
-const useNodeState = (id: string) => useContext(PipelineCtx)[id] ?? EMPTY_NODE;
+import {
+  type AgentNode,
+  type HeaderNode,
+  pathAttrs,
+  type SourceNode,
+  useFlowView,
+  useThreadAnchor,
+} from './FlowView';
+import { ThreadJson } from './ThreadJson';
 
 const KIND_ICON: Record<NodeKind, LucideIcon> = {
   source: Rss,
@@ -71,38 +71,70 @@ function subtitle(node: PipelineNode, state: NodeState): string {
   return node.model || 'No model';
 }
 
-export function AgentCard({ data, selected }: NodeProps<AgentNode>) {
-  const { node } = data;
-  const state = useNodeState(node.id);
+/** Spans, not a list: the counters sit inside the card's button. */
+function Counts({ state }: { state: NodeState }) {
+  return (
+    <span className="mm__counts">
+      <span>
+        <b>{state.in}</b>in
+      </span>
+      <span>
+        <b>{state.out}</b>out
+      </span>
+      <span data-tone={state.dropped ? 'warn' : undefined}>
+        <b>{state.dropped}</b>drop
+      </span>
+      <span data-tone={state.failed ? 'bad' : undefined}>
+        <b>{state.failed}</b>fail
+      </span>
+    </span>
+  );
+}
+
+/**
+ * One agent in one row of the graph (or the scout, in front of all rows). A
+ * click opens the side panel: the agent's graph with the step its thread is
+ * in, its counters and its past events. While the card holds a thread,
+ * pointing at it shows the thread's hover card.
+ */
+export function AgentCard({ id, data }: NodeProps<AgentNode>) {
+  const { node, worker, workers } = data;
+  const view = useFlowView();
+  const state = view.state.nodes[id] ?? EMPTY_NODE;
+  const thread = holdsThread(node.id) ? view.state.threads[state.job] : undefined;
+  // The panel of the selected card already shows its thread; a hover card would cover it.
+  const anchor = useThreadAnchor(view.selected === id ? undefined : thread?.id);
+  const numbered = worker !== null && workers > 1;
+
   return (
     <div
       className="mm__card"
       data-kind={node.kind}
       data-status={state.status}
-      data-selected={selected || undefined}
+      data-selected={view.selected === id || undefined}
       data-disabled={node.enabled ? undefined : ''}
+      {...pathAttrs(view.path, id)}
+      {...anchor}
     >
       <Handle type="target" position={Position.Left} className="mm__handle" isConnectable={false} />
-      <div className="mm__head">
-        <KindIcon kind={node.kind} />
-        <span className="mm__title">{node.label}</span>
-        <StatusGlyph status={state.status} />
-      </div>
-      <p className="mm__short">{subtitle(node, state)}</p>
-      <ul className="mm__counts">
-        <li>
-          <b>{state.in}</b>in
-        </li>
-        <li>
-          <b>{state.out}</b>out
-        </li>
-        <li data-tone={state.dropped ? 'warn' : undefined}>
-          <b>{state.dropped}</b>drop
-        </li>
-        <li data-tone={state.failed ? 'bad' : undefined}>
-          <b>{state.failed}</b>fail
-        </li>
-      </ul>
+      <button
+        type="button"
+        className="mm__main"
+        aria-pressed={view.selected === id}
+        title="The agent's graph, counters and past events"
+        onClick={() => view.openDetails(id)}
+      >
+        <span className="mm__head">
+          <KindIcon kind={node.kind} />
+          <span className="mm__title">
+            {node.label}
+            {numbered && <span className="mm__worker"> #{worker}</span>}
+          </span>
+          <StatusGlyph status={state.status} />
+        </span>
+        <span className="mm__short">{subtitle(node, state)}</span>
+        <Counts state={state} />
+      </button>
       <Handle
         type="source"
         position={Position.Right}
@@ -113,34 +145,45 @@ export function AgentCard({ data, selected }: NodeProps<AgentNode>) {
   );
 }
 
-export function SourceCard({ data, selected }: NodeProps<SourceNode>) {
+/** A source: a click opens its details. */
+export function SourceCard({ id, data }: NodeProps<SourceNode>) {
   const { node } = data;
-  const state = useNodeState(node.id);
+  const view = useFlowView();
+  const state = view.state.nodes[id] ?? EMPTY_NODE;
   return (
     <div
       className="mm__card mm__card--source"
       data-kind={node.kind}
       data-status={state.status}
-      data-selected={selected || undefined}
+      data-selected={view.selected === id || undefined}
       data-disabled={node.enabled ? undefined : ''}
+      {...pathAttrs(view.path, id)}
     >
-      <div className="mm__head">
-        <KindIcon kind={node.kind} />
-        <span className="mm__title" title={node.label}>
-          {node.label}
+      <button
+        type="button"
+        className="mm__main"
+        aria-pressed={view.selected === id}
+        title="Details and recent events"
+        onClick={() => view.openDetails(id)}
+      >
+        <span className="mm__head">
+          <KindIcon kind={node.kind} />
+          <span className="mm__title" title={node.label}>
+            {node.label}
+          </span>
+          {!node.enabled ? (
+            <span className="mm__short" title="Disabled in Setup">
+              off
+            </span>
+          ) : state.count !== null ? (
+            <span className="mm__badge" title={`${state.count} postings found`}>
+              {state.count}
+            </span>
+          ) : (
+            <StatusGlyph status={state.status} />
+          )}
         </span>
-        {!node.enabled ? (
-          <span className="mm__short" title="Disabled in Setup">
-            off
-          </span>
-        ) : state.count !== null ? (
-          <span className="mm__badge" title={`${state.count} postings found`}>
-            {state.count}
-          </span>
-        ) : (
-          <StatusGlyph status={state.status} />
-        )}
-      </div>
+      </button>
       <Handle
         type="source"
         position={Position.Right}
@@ -151,4 +194,35 @@ export function SourceCard({ data, selected }: NodeProps<SourceNode>) {
   );
 }
 
-export const nodeTypes = { agent: AgentCard, source: SourceCard };
+/** Above a column of the grid: the agent, and how many items wait for a free worker. */
+export function StageHeader({ data }: NodeProps<HeaderNode>) {
+  const { node, width } = data;
+  const waiting = waitingCount(useFlowView().state, node.id);
+  return (
+    <div
+      className="mm__colhead"
+      data-kind={node.kind}
+      data-busy={waiting > 0 || undefined}
+      style={{ width }}
+    >
+      <span className="mm__colname">{node.label}</span>
+      {isStage(node.id) ? (
+        <span className="mm__wait" title="Handed over by the previous agent, not started yet">
+          <b>{waiting}</b> waiting
+        </span>
+      ) : (
+        // The applier has no queue: it starts when you press a button on a lead.
+        <span className="mm__wait" title="Starts when you press Tailor CV or Apply on a lead">
+          on your approval
+        </span>
+      )}
+    </div>
+  );
+}
+
+export const nodeTypes = {
+  agent: AgentCard,
+  source: SourceCard,
+  json: ThreadJson,
+  header: StageHeader,
+};

@@ -2,6 +2,7 @@
 .env
 data/profile/*
 !data/profile/profile.example.yaml
+backups/
 *.db
 
 # Python

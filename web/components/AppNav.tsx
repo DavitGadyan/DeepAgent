@@ -1,5 +1,5 @@
 'use client';
-import { History, ListChecks, Radar, Settings2, Workflow } from 'lucide-react';
+import { CircleDollarSign, History, ListChecks, Radar, Settings2, Workflow } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ThemeToggle } from './ThemeToggle';
@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/', label: 'Pipeline', Icon: Workflow },
   { href: '/leads', label: 'Leads', Icon: ListChecks },
   { href: '/runs', label: 'Runs', Icon: History },
+  { href: '/cost', label: 'Cost', Icon: CircleDollarSign },
   { href: '/setup', label: 'Setup', Icon: Settings2 },
 ];
 

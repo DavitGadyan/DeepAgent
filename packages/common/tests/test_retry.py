@@ -58,3 +58,23 @@ def test_unreachable_is_only_a_failed_connection() -> None:
     assert is_unreachable(httpx.ConnectError("refused"))
     assert is_unreachable(ConnectionError("Failed to connect to Ollama"))
     assert not is_unreachable(httpx.ReadTimeout("slow"))
+
+
+def test_a_wrapped_connection_error_counts_as_unreachable() -> None:
+    """The OpenAI client (vLLM) wraps the httpx error; psycopg has its own class."""
+    import httpx
+    from leadscout_common.retry import is_unreachable
+
+    class APIConnectionError(Exception):
+        pass
+
+    class OperationalError(Exception):
+        pass
+
+    wrapped = RuntimeError("Connection error.")
+    wrapped.__cause__ = httpx.ConnectError("refused")
+
+    assert is_unreachable(APIConnectionError("Connection error."))
+    assert is_unreachable(wrapped)
+    assert is_unreachable(OperationalError("connection refused"))  # Postgres is down
+    assert not is_unreachable(ValueError("bad JSON"))

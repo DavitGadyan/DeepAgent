@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 from leadscout_common.bus import Bus
 from leadscout_common.schemas import Agent, Event, EventType, Stream
@@ -11,8 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import projector
+from . import prior_applications, projector
 from .db import EventRow, LeadRow, RunRow
+from .lead_view import lead_summary, may_change_lead
 
 log = logging.getLogger(__name__)
 GROUP = Agent.ORCHESTRATOR.value
@@ -23,25 +26,38 @@ MAX_DB_RETRY_DELAY_S = 30
 EVENT_DATA_ERRORS = (DataError, IntegrityError, ValueError, KeyError, TypeError)
 
 
+@dataclass(frozen=True)
+class LeadChanged:
+    """A lead row as the leads table shows it, pushed to open pages when it changes."""
+
+    lead: dict[str, Any]
+
+
+Pushed = Event | LeadChanged
+
+
 class Broadcaster:
-    """In-memory fan-out of live events to every open SSE connection."""
+    """In-memory fan-out of live events and lead changes to every open SSE connection."""
 
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[Event]] = set()
+        self._subscribers: set[asyncio.Queue[Pushed]] = set()
 
-    def subscribe(self) -> asyncio.Queue[Event]:
-        queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=SUBSCRIBER_QUEUE_SIZE)
+    def subscribe(self) -> asyncio.Queue[Pushed]:
+        queue: asyncio.Queue[Pushed] = asyncio.Queue(maxsize=SUBSCRIBER_QUEUE_SIZE)
         self._subscribers.add(queue)
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue[Event]) -> None:
+    def unsubscribe(self, queue: asyncio.Queue[Pushed]) -> None:
         self._subscribers.discard(queue)
 
-    def publish(self, event: Event) -> None:
+    def publish(self, item: Pushed) -> None:
         for queue in self._subscribers:
             if queue.full():  # a stalled browser tab must not block the pipeline
                 queue.get_nowait()
-            queue.put_nowait(event)
+            queue.put_nowait(item)
+
+    def publish_lead(self, lead: Any) -> None:
+        self.publish(LeadChanged(lead_summary(lead)))
 
 
 async def supervise_consumer(
@@ -67,11 +83,25 @@ async def consume_events(bus: Bus, sessions: async_sessionmaker, broadcaster: Br
         run_completed = await store(sessions, event)
         if run_completed is not None:
             broadcaster.publish(event)
+            if may_change_lead(event):
+                await push_lead(sessions, broadcaster, event.job_id)
         if run_completed:
             await bus.emit(
                 Event(run_id=event.run_id, agent=Agent.ORCHESTRATOR, type=EventType.RUN_FINISHED)
             )
         await bus.ack(Stream.EVENTS, GROUP, message_id)
+
+
+async def push_lead(sessions: async_sessionmaker, broadcaster: Broadcaster, job_id: str) -> None:
+    """Send the lead's current row to open pages. Best effort: a page that misses one
+    still has the right data after its next load."""
+    try:
+        async with sessions() as session:
+            lead = await session.get(LeadRow, job_id)
+        if lead is not None:
+            broadcaster.publish_lead(lead)
+    except Exception as error:
+        log.warning("Could not push lead %s to open pages (%s)", job_id, error)
 
 
 async def store(sessions: async_sessionmaker, event: Event) -> bool | None:
@@ -123,7 +153,9 @@ async def record_event(session: AsyncSession, event: Event) -> bool:
     if event.job_id:
         lead = await session.get(LeadRow, event.job_id)
         if lead is None and projector.creates_lead(event):
-            session.add(projector.new_lead(event))
+            lead = projector.new_lead(event)
+            session.add(lead)
+            await prior_applications.apply_to_lead(session, lead)
         elif lead is not None:
             projector.apply_to_lead(lead, event)
     return run_completed

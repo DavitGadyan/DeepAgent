@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import { api } from '@/lib/api';
+import { pipelineWorkers } from '@/lib/pipeline/stages';
 import { useApi } from '@/lib/useApi';
 import { ErrorState, Loading } from '@/components/ui/States';
 import { RunBar } from './RunBar';
@@ -24,6 +25,7 @@ export function PipelineView() {
   const selected = runs.data?.find((run) => run.id === requestedRun) ?? runs.data?.[0];
   const running = selected?.status === 'running';
   const refreshRuns = runs.refresh;
+  const refreshPipeline = pipeline.refresh;
 
   useEffect(() => {
     if (!running) return;
@@ -46,9 +48,13 @@ export function PipelineView() {
       <RunBar
         runs={runs.data}
         selected={selected}
+        workers={pipelineWorkers(pipeline.data.nodes)}
         onSelect={(runId) => router.push(`/?run=${encodeURIComponent(runId)}`)}
+        onStopped={refreshRuns}
         onStarted={() => {
           refreshRuns();
+          // A run can change the worker count: the graph needs the new rows.
+          refreshPipeline();
           router.push('/');
         }}
       />

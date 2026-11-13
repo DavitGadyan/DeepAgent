@@ -17,7 +17,9 @@ export type EventType =
   | 'item.finished'
   | 'item.dropped'
   | 'item.failed'
-  | 'item.waiting';
+  | 'item.waiting'
+  /** A node of the agent's LangGraph graph started: data.node, data.resumed?. */
+  | 'item.progress';
 
 /** `Event` in the API docs; renamed here so it does not shadow the DOM `Event`. */
 export interface PipelineEvent {
@@ -31,6 +33,7 @@ export interface PipelineEvent {
   job_id: string;
   title: string;
   duration_ms: number | null;
+  /** Every item.* event of a pipeline agent has `worker` (1..N): which parallel worker. */
   data: Record<string, unknown>;
 }
 
@@ -47,11 +50,23 @@ export interface PipelineNode {
   /** sources have parent 'scout' */
   parent?: string;
   enabled: boolean;
+  /** Agents: how many jobs it handles at the same time (scout and applier: 1). */
+  workers: number;
+  /** The agent's LangGraph graph; null when it is not a graph or has not started yet. */
+  graph: GraphShape | null;
+  /** Agents that are not graphs: what they do, in order. */
+  steps: string[];
 }
 
 export interface PipelineEdge {
   source: string;
   target: string;
+}
+
+/** Nodes and edges of one agent's LangGraph graph. Start and end are '__start__', '__end__'. */
+export interface GraphShape {
+  nodes: { id: string; label: string }[];
+  edges: { source: string; target: string; conditional: boolean }[];
 }
 
 export interface Pipeline {
@@ -64,6 +79,8 @@ export interface RunOptions {
   /** 0 means "the Setup value"; only runs stored before the effective value was saved have it. */
   limit_per_source: number;
   force: boolean;
+  /** Parallel workers per agent. Sent as 0 or left out to keep the current count. */
+  workers: number;
 }
 
 export interface RunStats {
@@ -77,7 +94,8 @@ export interface RunStats {
 
 export interface Run {
   id: string;
-  status: 'running' | 'finished';
+  /** 'stopped': the user stopped it; its waiting and unfinished jobs were let go. */
+  status: 'running' | 'finished' | 'stopped';
   started_at: string;
   finished_at: string | null;
   options: RunOptions;
@@ -93,6 +111,9 @@ export const LEAD_STATUSES = [
   'filling',
   'form_filled',
   'applied',
+  'in_review',
+  'interview',
+  'rejected',
   'skipped',
   'failed',
 ] as const;
@@ -112,6 +133,8 @@ export interface LeadSummary {
   seniority: string;
   role_family: string;
   posted_at: string | null;
+  /** When LeadScout found the posting. */
+  created_at: string;
   updated_at: string;
 }
 
@@ -180,7 +203,11 @@ export interface Application {
    * login or CAPTCHA wall, a crash) and the CV is still usable.
    */
   error: string;
-  // The two below are absent on applications written before they existed.
+  // The fields below are absent on applications written before they existed.
+  /** When the application was sent, for one made before LeadScout or outside it. */
+  applied_at?: string | null;
+  /** Where a prior application comes from. */
+  note?: string;
   /** What Claude Code's sessions for this lead cost, summed, at API prices; null when unknown. */
   cost_usd?: number | null;
   /** Form fields the agent filled. */
@@ -210,12 +237,19 @@ export interface LeadPage {
   total: number;
 }
 
+export type LeadSort = 'newest' | 'score';
+
 export interface LeadQuery {
   min_score?: number;
   status?: LeadStatus;
   source?: string;
   remote?: boolean;
   q?: string;
+  /** ISO timestamps bounding when LeadScout found the posting (after: inclusive). */
+  found_after?: string;
+  found_before?: string;
+  /** Default 'newest'. */
+  sort?: LeadSort;
   limit?: number;
   offset?: number;
 }
@@ -237,4 +271,74 @@ export interface Settings {
   /** 0-100 */
   research_min_score: number;
   limit_per_source: number;
+  claude_access: ClaudeAccess;
+  /** USD cap per Claude Code session; 0 = no cap. */
+  tailor_budget_usd: number;
+  fill_budget_usd: number;
+  /** Tailor CV model: '' = Claude Code's default, an alias, or a full model name. */
+  tailor_model: string;
+  /** Claude spend allowed per month in USD; 0 = no limit. */
+  monthly_budget_usd: number;
+  /** Rows of the pipeline, 1-16: each row is one worker of every agent. */
+  workers: number;
+}
+
+export const MAX_WORKERS = 16;
+
+/** GET /api/costs. All amounts are USD at API prices. */
+export interface CostAmount {
+  usd: number;
+  /** The part paid with a Console API key. */
+  billed_usd: number;
+  sessions: number;
+}
+
+export interface CostSlice extends CostAmount {
+  key: string;
+  label: string;
+}
+
+export interface CostDay {
+  /** YYYY-MM-DD, the viewer's local day. */
+  date: string;
+  login_usd: number;
+  console_usd: number;
+}
+
+export interface CostReport {
+  today: CostAmount;
+  last_7_days: CostAmount;
+  this_month: CostAmount;
+  all_time: CostAmount;
+  monthly_budget_usd: number;
+  /** One entry per day, oldest first, days without spend included. */
+  by_day: CostDay[];
+  by_action: CostSlice[];
+  by_model: CostSlice[];
+  by_access: CostSlice[];
+  top_leads: { job_id: string; title: string; usd: number; sessions: number }[];
+  /** `langfuse` is '' when tracing is off. */
+  links: { console_billing: string; langfuse: string };
+}
+
+/** login: your Claude account (subscription). console: ANTHROPIC_API_KEY, billed per token. */
+export type ClaudeAccess = 'login' | 'console';
+
+/** What the applier worker reports; the API returns null when it is not running. */
+export interface ApplierStatus {
+  api_key_set: boolean;
+  logged_in: boolean;
+  /** e.g. "claude.ai" */
+  auth_method: string;
+  /** e.g. "max", "pro" */
+  subscription: string;
+  updated_at: string;
+}
+
+/** `data/profile/profile.yaml`. Every value is free text; empty means not stated. */
+export interface UserProfile {
+  /** Read by the scorer. */
+  preferences: Record<string, string>;
+  /** Read only by the form-filling agent. */
+  application: Record<string, string>;
 }

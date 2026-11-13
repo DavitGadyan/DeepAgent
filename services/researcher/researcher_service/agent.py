@@ -5,6 +5,9 @@ The researcher needs none of them, and for a small local model they cost: their 
 schemas take about 2,700 tokens of every request, and a subagent would run outside the
 step limit. A harness profile for Ollama models hides them, so the model sees exactly
 `web_search`, `fetch_page` and the `CompanyBrief` answer.
+
+The agent is a LangGraph graph; with a checkpointer its state is saved after every step,
+so a research that is cut off continues from the pages it already read.
 """
 
 from __future__ import annotations
@@ -14,10 +17,10 @@ from typing import Any
 
 from deepagents import HarnessProfileConfig, create_deep_agent, register_harness_profile
 from deepagents.profiles import GeneralPurposeSubagentProfile
+from leadscout_common.checkpoints import forget_thread, run_thread, thread_id
 from leadscout_common.config import AgentConfig
 from leadscout_common.llm import chat_model, load_prompt, structured_call
-from leadscout_common.schemas import CompanyBrief, JobMessage
-from leadscout_common.tracing import langchain_config
+from leadscout_common.schemas import Agent, CompanyBrief, JobMessage
 
 from .tools import fetch_page, web_search
 
@@ -31,18 +34,23 @@ BUILT_IN_TOOLS = frozenset(
 )
 
 
+# The providers `chat_model` can return: Ollama, and OpenAI-compatible servers (vLLM).
+PROVIDERS = ("ollama", "openai")
+
+
 def register_lean_profile() -> None:
-    """Hide deepagents' built-in tools and subagent for every Ollama model."""
-    register_harness_profile(
-        "ollama",
-        HarnessProfileConfig(
-            excluded_tools=BUILT_IN_TOOLS,
-            general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
-        ),
-    )
+    """Hide deepagents' built-in tools and subagent for every local model."""
+    for provider in PROVIDERS:
+        register_harness_profile(
+            provider,
+            HarnessProfileConfig(
+                excluded_tools=BUILT_IN_TOOLS,
+                general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+            ),
+        )
 
 
-def build_agent(config: AgentConfig) -> Any:
+def build_agent(config: AgentConfig, checkpointer: Any | None = None) -> Any:
     register_lean_profile()
     return create_deep_agent(
         model=chat_model(config),
@@ -50,6 +58,7 @@ def build_agent(config: AgentConfig) -> Any:
         system_prompt=SYSTEM_PROMPT,
         response_format=CompanyBrief,
         name="researcher",
+        checkpointer=checkpointer,
     )
 
 
@@ -65,10 +74,13 @@ def task_prompt(message: JobMessage) -> str:
 async def research(agent: Any, message: JobMessage, config: AgentConfig) -> CompanyBrief:
     """Run the agent on one company, bounded in steps and in wall-clock time."""
     request = {"messages": [{"role": "user", "content": task_prompt(message)}]}
-    call = agent.ainvoke(request, config={"recursion_limit": RECURSION_LIMIT, **langchain_config()})
+    thread = thread_id(message.job_id, Agent.RESEARCHER.value)
+    call = run_thread(agent, thread, request, recursion_limit=RECURSION_LIMIT)
     try:
         result = await asyncio.wait_for(call, timeout=config.timeout_s)
     except TimeoutError:
+        # A research that ran out of time starts fresh next time, not from its long state.
+        await forget_thread(agent, thread)
         # Not worded as a transient error on purpose: retrying would spend the budget again.
         raise RuntimeError(f"Research exceeded its {config.timeout_s}s budget") from None
     structured = result.get("structured_response")

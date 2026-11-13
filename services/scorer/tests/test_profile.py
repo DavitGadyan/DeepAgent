@@ -78,3 +78,25 @@ def test_evidence_includes_every_portfolio_skill(
 
     assert "Pinecone" in profile.evidence and "scikit-learn" in profile.evidence
     assert "Pinecone" not in profile.as_prompt()  # beyond the 80 most used: not in the prompt
+
+
+def test_a_saved_profile_is_used_for_the_next_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    from scorer_service.profile import ProfileSource
+
+    prefs = tmp_path / "profile.yaml"
+    (tmp_path / "cv.txt").write_text("Data Scientist")
+    prefs.write_text("preferences:\n  remote: onsite\n")
+    monkeypatch.setenv("PROFILE_CV_PATH", str(tmp_path / "cv.txt"))
+    monkeypatch.setenv("PROFILE_PREFS_PATH", str(prefs))
+    source = ProfileSource()
+    assert "onsite" in source.current().preferences
+
+    prefs.write_text("preferences:\n  remote: remote only\n")
+    later = prefs.stat().st_mtime_ns + 1_000_000_000
+    os.utime(prefs, ns=(later, later))  # a save within the same clock tick still counts
+
+    assert "remote only" in source.current().preferences

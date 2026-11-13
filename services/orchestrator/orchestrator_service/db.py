@@ -84,6 +84,8 @@ class LeadRow(Base):
     seniority: Mapped[str] = mapped_column(String(16), default="unknown")
     role_family: Mapped[str] = mapped_column(String(80), default="")
     posted_at: Mapped[datetime | None] = mapped_column(default=None)
+    # When LeadScout found the posting; the leads table filters and sorts on it.
+    created_at: Mapped[datetime] = mapped_column(default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     job: Mapped[dict[str, Any]] = mapped_column(default=dict)
     extracted: Mapped[dict[str, Any] | None] = mapped_column(default=None)
@@ -92,6 +94,35 @@ class LeadRow(Base):
     application: Mapped[dict[str, Any] | None] = mapped_column(default=None)
     # The last pipeline step that failed for this job: {"agent": ..., "error": ...}.
     pipeline_error: Mapped[dict[str, Any] | None] = mapped_column(default=None)
+
+
+class PriorApplicationRow(Base):
+    """An application made before LeadScout or outside it. Imported; no agent writes it."""
+
+    __tablename__ = "prior_applications"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    company: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300))
+    urls: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(16))
+    applied_at: Mapped[datetime | None] = mapped_column(default=None)
+    # Folder in the applications directory with the documents that were sent; may be empty.
+    application_dir: Mapped[str] = mapped_column(String(300), default="")
+    note: Mapped[str] = mapped_column(String(500), default="")
+    imported_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class PostingKeyRow(Base):
+    """One identity key of a prior application's posting (see `posting_keys`).
+
+    Two applications can share a key: the same job applied to under two company spellings.
+    """
+
+    __tablename__ = "prior_application_keys"
+
+    key: Mapped[str] = mapped_column(String(600), primary_key=True)
+    application_id: Mapped[str] = mapped_column(String(16), primary_key=True)
 
 
 class SettingsRow(Base):
@@ -124,6 +155,7 @@ async def create_tables(engine: AsyncEngine) -> None:
 ADDED_COLUMNS = [
     ("events", "ends_job", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("leads", "pipeline_error", "JSON"),
+    ("leads", "created_at", "TIMESTAMP WITH TIME ZONE"),
 ]
 
 
@@ -134,7 +166,20 @@ def upgrade_schema(connection: Connection) -> None:
             connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
             if column == "ends_job":
                 _backfill_ends_job(connection)
+            if column == "created_at":
+                _backfill_created_at(connection)
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_events_agent_ts ON events (agent, ts)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_leads_created_at ON leads (created_at)"))
+
+
+def _backfill_created_at(connection: Connection) -> None:
+    """A lead was found when its first event was recorded (now, for one without events)."""
+    connection.execute(
+        text(
+            "UPDATE leads SET created_at = COALESCE("
+            "(SELECT MIN(ts) FROM events WHERE events.job_id = leads.job_id), CURRENT_TIMESTAMP)"
+        )
+    )
 
 
 def _backfill_ends_job(connection: Connection) -> None:

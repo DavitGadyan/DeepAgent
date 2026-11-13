@@ -87,12 +87,16 @@
 .tg__close:hover {
   background: var(--hover-strong);
 }
-.tg__log {
+/* Everything under the title scrolls together: graph, counters, past events. */
+.tg__scroll {
   flex: 1;
   min-height: 0;
-  margin: 0.5rem -1.2rem 0;
+  margin: 0.6rem -1.2rem 0;
   padding: 0 1.2rem 1rem;
   overflow-y: auto;
+}
+.tg__log {
+  margin-top: 0.5rem;
 }
 .tg__event {
   display: grid;

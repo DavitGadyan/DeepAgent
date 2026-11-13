@@ -2,6 +2,7 @@ import { formatDateTime } from '@/lib/format';
 import type { Run, RunStats } from '@/lib/types';
 import { RunStatusPill } from '@/components/ui/badges';
 import { StartRunButton } from './StartRunButton';
+import { StopRunButton } from './StopRunButton';
 
 const STATS: { key: keyof RunStats; label: string }[] = [
   { key: 'discovered', label: 'discovered' },
@@ -25,17 +26,22 @@ export function RunStatsList({ stats }: { stats: RunStats }) {
   );
 }
 
-/** Above the graph: which run is shown, how it is doing, and the button to start a new one. */
+/** Above the graph: which run is shown, how it is doing, and the buttons to stop it and to start a new one. */
 export function RunBar({
   runs,
   selected,
+  workers,
   onSelect,
   onStarted,
+  onStopped,
 }: {
   runs: Run[];
   selected: Run | undefined;
+  /** How many parallel workers the agents have now. */
+  workers: number;
   onSelect: (runId: string) => void;
   onStarted: (run: Run) => void;
+  onStopped: (run: Run) => void;
 }) {
   return (
     <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 !py-2.5">
@@ -62,8 +68,9 @@ export function RunBar({
           <RunStatsList stats={selected.stats} />
         </>
       )}
-      <div className="ml-auto">
-        <StartRunButton onStarted={onStarted} />
+      <div className="ml-auto flex items-center gap-2">
+        {selected?.status === 'running' && <StopRunButton run={selected} onStopped={onStopped} />}
+        <StartRunButton workers={workers} onStarted={onStarted} />
       </div>
     </div>
   );

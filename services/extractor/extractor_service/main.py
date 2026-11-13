@@ -3,13 +3,20 @@
 Two small schema-constrained calls instead of one large one. With the single 17-field
 schema a 7B model left skills, summary and bullets empty on a real posting; asked for
 facts and key points separately, it filled every field and finished sooner, because the
-posting is the same prefix in both calls and Ollama reuses its cached prompt.
+posting is the same prefix in both calls and the model server reuses its cached prompt.
+
+The steps are nodes of a LangGraph graph (facts -> highlights -> tidy) with a checkpoint
+after each one, so a job that is cut off after `facts` continues at `highlights`.
 """
 
 from __future__ import annotations
 
 import asyncio
+from typing import Any, TypedDict
 
+from langgraph.graph import END, START, StateGraph
+from leadscout_common.bus import Bus
+from leadscout_common.checkpoints import graph_shape, open_checkpointer, run_thread, thread_id
 from leadscout_common.config import AgentConfig, agent_config
 from leadscout_common.llm import clip, load_prompt, structured_call
 from leadscout_common.logs import setup_logging
@@ -22,6 +29,7 @@ from leadscout_common.schemas import (
     JobPosting,
     Stream,
 )
+from leadscout_common.shared_state import save_graph
 from leadscout_common.worker import StageResult, run_stage
 
 SYSTEM_PROMPT = load_prompt(__file__, "system")
@@ -44,13 +52,53 @@ def posting_as_prompt(job: JobPosting, num_ctx: int) -> str:
     return f"<posting>\n{header}{text}\n</posting>"
 
 
-async def extract(job: JobPosting, config: AgentConfig) -> ExtractedJob:
-    posting = posting_as_prompt(job, config.num_ctx)
-    facts = await structured_call(config, JobFacts, SYSTEM_PROMPT, f"{posting}\n\n{FACTS_TASK}")
-    highlights = await structured_call(
-        config, JobHighlights, SYSTEM_PROMPT, f"{posting}\n\n{HIGHLIGHTS_TASK}"
-    )
-    return tidy(ExtractedJob(**facts.model_dump(), **highlights.model_dump()), job)
+class ExtractState(TypedDict, total=False):
+    """One job's thread. Plain JSON values, so a checkpoint can store them."""
+
+    job: dict[str, Any]
+    facts: dict[str, Any]
+    highlights: dict[str, Any]
+    extracted: dict[str, Any]
+
+
+def build_graph(config: AgentConfig, checkpointer: Any | None = None) -> Any:
+    """facts -> highlights -> tidy, with a checkpoint after each node."""
+
+    def posting(state: ExtractState) -> str:
+        return posting_as_prompt(JobPosting.model_validate(state["job"]), config.num_ctx)
+
+    async def facts(state: ExtractState) -> ExtractState:
+        task = f"{posting(state)}\n\n{FACTS_TASK}"
+        found = await structured_call(config, JobFacts, SYSTEM_PROMPT, task)
+        return {"facts": found.model_dump(mode="json")}
+
+    async def highlights(state: ExtractState) -> ExtractState:
+        task = f"{posting(state)}\n\n{HIGHLIGHTS_TASK}"
+        found = await structured_call(config, JobHighlights, SYSTEM_PROMPT, task)
+        return {"highlights": found.model_dump(mode="json")}
+
+    def tidy_up(state: ExtractState) -> ExtractState:
+        merged = ExtractedJob(**state["facts"], **state["highlights"])
+        cleaned = tidy(merged, JobPosting.model_validate(state["job"]))
+        return {"extracted": cleaned.model_dump(mode="json")}
+
+    builder = StateGraph(ExtractState)
+    builder.add_node("facts", facts)
+    builder.add_node("highlights", highlights)
+    builder.add_node("tidy", tidy_up)
+    builder.add_edge(START, "facts")
+    builder.add_edge("facts", "highlights")
+    builder.add_edge("highlights", "tidy")
+    builder.add_edge("tidy", END)
+    return builder.compile(checkpointer=checkpointer)
+
+
+async def extract(job: JobPosting, config: AgentConfig, graph: Any | None = None) -> ExtractedJob:
+    """Run one posting through the graph; `graph` is reused between jobs by the service."""
+    graph = graph or build_graph(config)
+    thread = thread_id(job.job_id, Agent.EXTRACTOR.value)
+    state = await run_thread(graph, thread, {"job": job.model_dump(mode="json")})
+    return ExtractedJob.model_validate(state["extracted"])
 
 
 PLACEHOLDERS = {"", "unknown", "n/a", "none", "not stated", "not specified", "null"}
@@ -79,13 +127,16 @@ def tidy(extracted: ExtractedJob, job: JobPosting) -> ExtractedJob:
 
 async def main() -> None:
     setup_logging("extractor")
+    bus = Bus()
     config = agent_config("extractor")
+    graph = build_graph(config, await open_checkpointer())
+    await save_graph(bus, Agent.EXTRACTOR.value, graph_shape(graph))
 
     async def handle(message: JobMessage) -> StageResult:
-        message.extracted = await extract(message.job, config)
+        message.extracted = await extract(message.job, config, graph)
         return StageResult(message, data={"extracted": message.extracted.model_dump(mode="json")})
 
-    await run_stage(Agent.EXTRACTOR, Stream.FILTERED, Stream.EXTRACTED, handle)
+    await run_stage(Agent.EXTRACTOR, Stream.FILTERED, Stream.EXTRACTED, handle, bus)
 
 
 if __name__ == "__main__":
